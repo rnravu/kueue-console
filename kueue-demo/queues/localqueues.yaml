@@ -1,0 +1,23 @@
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: LocalQueue
+metadata:
+  name: small-queue
+  namespace: demo
+spec:
+  clusterQueue: cq-small
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: LocalQueue
+metadata:
+  name: medium-queue
+  namespace: demo
+spec:
+  clusterQueue: cq-medium
+---
+apiVersion: kueue.x-k8s.io/v1beta1
+kind: LocalQueue
+metadata:
+  name: large-queue
+  namespace: demo
+spec:
+  clusterQueue: cq-large

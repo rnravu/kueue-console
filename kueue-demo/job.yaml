@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: test-job
+  labels:
+    kueue.x-k8s.io/queue-name: user-queue
+spec:
+  suspend: true
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: test
+          image: busybox
+          command: ["sh", "-c", "sleep 20"]
+          resources:
+            requests:
+              cpu: "1"
+              memory: "128Mi"

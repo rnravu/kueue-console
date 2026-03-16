@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: medium-job-
+  namespace: demo
+  labels:
+    kueue.x-k8s.io/queue-name: medium-queue
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: job
+        image: busybox
+        command: ["sh","-c","echo running medium job; sleep 30"]
+        resources:
+          requests:
+            cpu: "1"
+            memory: "512Mi"

@@ -1,0 +1,1679 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-950">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kueue Console</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style type="text/tailwindcss">
+    [x-cloak] { display: none !important; }
+    .nav-link { @apply px-4 py-2 rounded-md text-sm font-medium transition-colors; }
+    .nav-link-active { @apply bg-indigo-600 text-white; }
+    .nav-link-inactive { @apply text-gray-300 hover:bg-gray-700 hover:text-white; }
+    .btn-sm { @apply text-xs px-2.5 py-1 rounded font-medium transition-colors; }
+    .btn-primary   { @apply btn-sm bg-indigo-600 hover:bg-indigo-500 text-white; }
+    .btn-secondary { @apply btn-sm bg-gray-700 hover:bg-gray-600 text-gray-200; }
+    .btn-danger    { @apply btn-sm bg-red-800 hover:bg-red-700 text-white; }
+    .btn-warning   { @apply btn-sm bg-yellow-700 hover:bg-yellow-600 text-white; }
+    .modal-backdrop { @apply fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4; }
+    .modal-box { @apply bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto; }
+    .modal-box-lg { @apply bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto; }
+    .form-input { @apply w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500; }
+    .form-label { @apply block text-sm font-medium text-gray-300 mb-1; }
+    .section-header { @apply text-xs font-semibold text-gray-400 uppercase tracking-wider; }
+  </style>
+</head>
+
+<body class="h-full text-gray-100" x-data="app()" x-cloak>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       TOP NAVIGATION — 4 permanent items
+       ══════════════════════════════════════════════════════════════════════ -->
+  <nav class="bg-gray-900 border-b border-gray-700 px-6 py-3 flex items-center gap-6">
+    <span class="text-indigo-400 font-bold text-lg tracking-wide mr-4">⚡ Kueue Console</span>
+    <template x-for="tab in nav" :key="tab.id">
+      <button
+        @click="currentPage = tab.id"
+        :class="currentPage === tab.id ? 'nav-link nav-link-active' : 'nav-link nav-link-inactive'"
+        x-text="tab.label">
+      </button>
+    </template>
+    <div class="ml-auto flex items-center gap-3 text-xs text-gray-400">
+      <span :class="sseConnected ? 'text-green-400' : 'text-red-400'">
+        <span x-text="sseConnected ? '● Live' : '● Disconnected'"></span>
+      </span>
+      <span x-text="lastUpdated"></span>
+    </div>
+  </nav>
+
+  <!-- ── Layout ── -->
+  <div class="flex h-[calc(100vh-53px)]">
+
+    <!-- ── Left Sidebar ── -->
+    <aside class="w-56 bg-gray-900 border-r border-gray-700 p-4 flex flex-col gap-5 overflow-y-auto shrink-0">
+      <!-- Namespace filter -->
+      <div>
+        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Namespace</p>
+        <select
+          x-model="selectedNamespace"
+          class="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-indigo-500">
+          <option value="">All namespaces</option>
+          <template x-for="ns in namespaces" :key="ns.name">
+            <option :value="ns.name" x-text="ns.name"></option>
+          </template>
+        </select>
+      </div>
+
+      <!-- Status filter (Jobs page) -->
+      <div x-show="currentPage === 'jobs'">
+        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Status</p>
+        <div class="flex flex-col gap-1">
+          <template x-for="s in ['All','Running','Pending','Failed','Completed']" :key="s">
+            <button
+              @click="jobStatusFilter = s"
+              :class="jobStatusFilter === s
+                ? 'bg-indigo-700 text-white text-xs px-2 py-1 rounded'
+                : 'text-gray-300 hover:text-white text-xs px-2 py-1 rounded hover:bg-gray-700'"
+              x-text="s">
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <!-- Queue filter (Queues page) -->
+      <div x-show="currentPage === 'queues'">
+        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">View</p>
+        <div class="flex flex-col gap-1">
+          <template x-for="q in ['ClusterQueues','LocalQueues']" :key="q">
+            <button
+              @click="queueTab = q"
+              :class="queueTab === q
+                ? 'bg-indigo-700 text-white text-xs px-2 py-1 rounded'
+                : 'text-gray-300 hover:text-white text-xs px-2 py-1 rounded hover:bg-gray-700'"
+              x-text="q">
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <!-- Divider + Demo Data -->
+      <div class="mt-auto pt-4 border-t border-gray-700">
+        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Demo Data</p>
+        <p class="text-xs text-gray-500 mb-3 leading-snug">
+          Creates/removes demo resources in the <span class="font-mono text-gray-400">demo</span> namespace only.
+          Does <strong class="text-gray-300">not</strong> affect your real cluster jobs.
+        </p>
+        <button @click="setupSampleData()"
+                :disabled="sampleData.busy"
+                class="w-full bg-green-800 hover:bg-green-700 disabled:opacity-50 text-white text-xs font-medium py-1.5 rounded mb-1 transition-colors">
+          <span x-text="sampleData.busy && sampleData.activeOp === 'setup' ? 'Setting up…' : '⚡ Setup Sample Data'"></span>
+        </button>
+        <button @click="cleanupSampleData()"
+                :disabled="sampleData.busy"
+                class="w-full bg-red-900 hover:bg-red-800 disabled:opacity-50 text-white text-xs font-medium py-1.5 rounded transition-colors">
+          <span x-text="sampleData.busy && sampleData.activeOp === 'cleanup' ? 'Clearing…' : '🧹 Clear Sample Data'"></span>
+        </button>
+        <template x-if="sampleData.result">
+          <div class="mt-2 rounded p-2 text-xs"
+               :class="sampleData.result.success ? 'bg-green-900/50 text-green-300' : 'bg-yellow-900/50 text-yellow-300'">
+            <p x-text="sampleData.result.message"></p>
+          </div>
+        </template>
+      </div>
+    </aside>
+
+    <!-- ── Main Content ── -->
+    <main class="flex-1 overflow-y-auto p-6">
+
+      <!-- ═══ DASHBOARD PAGE ═══ -->
+      <div x-show="currentPage === 'dashboard'">
+        <h1 class="text-xl font-semibold mb-5">Dashboard</h1>
+
+        <!-- Summary cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <p class="text-xs text-gray-400 mb-1">Cluster Queues</p>
+            <p class="text-3xl font-bold text-indigo-400" x-text="dashboard.totalClusterQueues ?? 0"></p>
+          </div>
+          <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <p class="text-xs text-gray-400 mb-1">Running</p>
+            <p class="text-3xl font-bold text-green-400" x-text="dashboard.activeWorkloads ?? 0"></p>
+          </div>
+          <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <p class="text-xs text-gray-400 mb-1">Pending</p>
+            <p class="text-3xl font-bold text-yellow-400" x-text="dashboard.pendingWorkloads ?? 0"></p>
+          </div>
+          <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <p class="text-xs text-gray-400 mb-1">Failed</p>
+            <p class="text-3xl font-bold text-red-400" x-text="dashboard.failedWorkloads ?? 0"></p>
+          </div>
+        </div>
+
+        <!-- Secondary cards -->
+        <div class="grid grid-cols-2 gap-4 mb-8">
+          <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <p class="text-xs text-gray-400 mb-1">Local Queues</p>
+            <p class="text-2xl font-bold text-indigo-300" x-text="dashboard.totalLocalQueues ?? 0"></p>
+          </div>
+          <div class="bg-gray-800 rounded-lg p-4 border border-gray-700">
+            <p class="text-xs text-gray-400 mb-1">Completed</p>
+            <p class="text-2xl font-bold text-gray-400" x-text="dashboard.completedWorkloads ?? 0"></p>
+          </div>
+        </div>
+
+        <!-- Warning: pending jobs exist but no queues are configured -->
+        <template x-if="(dashboard.pendingWorkloads ?? 0) > 0 && (dashboard.totalClusterQueues ?? 0) === 0">
+          <div class="bg-yellow-900/40 border border-yellow-700 rounded-lg p-4 mb-6 flex gap-3 items-start">
+            <span class="text-yellow-400 text-lg leading-none mt-0.5">⚠</span>
+            <div class="text-sm">
+              <p class="text-yellow-200 font-semibold mb-1">Pending workloads but no Cluster Queues</p>
+              <p class="text-yellow-300/80">
+                There <span x-text="(dashboard.pendingWorkloads??0)===1?'is':'are'"></span>
+                <strong x-text="dashboard.pendingWorkloads"></strong> pending
+                workload<span x-text="(dashboard.pendingWorkloads??0)===1?'':'s'"></span>
+                in the cluster, but no Cluster Queues are configured to admit them.
+                Pending counts include all namespaces — this may be a real job in
+                <span class="font-mono">default</span> that was never managed by Kueue.
+                Use the <strong>Troubleshoot</strong> page to investigate.
+              </p>
+            </div>
+          </div>
+        </template>
+
+        <!-- ClusterQueue resource summary -->
+        <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Cluster Queue Summary</h2>
+        <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead class="bg-gray-750">
+              <tr class="border-b border-gray-700 text-gray-400 text-xs uppercase">
+                <th class="px-4 py-3 text-left">Name</th>
+                <th class="px-4 py-3 text-left">Status</th>
+                <th class="px-4 py-3 text-right">Admitted</th>
+                <th class="px-4 py-3 text-right">Pending</th>
+                <th class="px-4 py-3 text-left">CPU Quota</th>
+                <th class="px-4 py-3 text-left">Memory Quota</th>
+                <th class="px-4 py-3 text-left">Age</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-if="clusterQueues.length === 0">
+                <tr><td colspan="7" class="px-4 py-6 text-center text-gray-500">No cluster queues found</td></tr>
+              </template>
+              <template x-for="q in clusterQueues" :key="q.name">
+                <tr class="border-b border-gray-700 hover:bg-gray-750">
+                  <td class="px-4 py-2 font-mono text-indigo-300" x-text="q.name"></td>
+                  <td class="px-4 py-2"><span :class="statusBadgeClass(q.status)" x-text="q.status"></span></td>
+                  <td class="px-4 py-2 text-right" x-text="q.admittedWorkloads"></td>
+                  <td class="px-4 py-2 text-right" x-text="q.pendingWorkloads"></td>
+                  <td class="px-4 py-2 text-gray-300" x-text="q.nominalCpu || '—'"></td>
+                  <td class="px-4 py-2 text-gray-300" x-text="q.nominalMemory || '—'"></td>
+                  <td class="px-4 py-2 text-gray-400" x-text="q.age"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ QUEUES PAGE ═══ -->
+      <div x-show="currentPage === 'queues'">
+        <div class="flex items-center justify-between mb-5">
+          <h1 class="text-xl font-semibold">Queues</h1>
+          <button x-show="queueTab === 'LocalQueues'"
+                  @click="createQueueModal.open = true; createQueueModal.result = null; createQueueModal.errors = {}; createQueueModal.name = ''; createQueueModal.namespace = selectedNamespace; createQueueModal.clusterQueue = ''"
+                  class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded transition-colors">
+            + Create Queue
+          </button>
+        </div>
+
+        <!-- ClusterQueues tab -->
+        <div x-show="queueTab === 'ClusterQueues'">
+          <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-700 text-gray-400 text-xs uppercase">
+                  <th class="px-4 py-3 text-left">Name</th>
+                  <th class="px-4 py-3 text-left">Status</th>
+                  <th class="px-4 py-3 text-right">Admitted</th>
+                  <th class="px-4 py-3 text-right">Pending</th>
+                  <th class="px-4 py-3 text-left">CPU Quota</th>
+                  <th class="px-4 py-3 text-left">CPU Used</th>
+                  <th class="px-4 py-3 text-left">Mem Quota</th>
+                  <th class="px-4 py-3 text-left">Mem Used</th>
+                  <th class="px-4 py-3 text-left">Age</th>
+                  <th class="px-4 py-3 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-if="clusterQueues.length === 0">
+                  <tr><td colspan="10" class="px-4 py-6 text-center text-gray-500">No cluster queues found</td></tr>
+                </template>
+                <template x-for="q in clusterQueues" :key="q.name">
+                  <tr class="border-b border-gray-700 hover:bg-gray-750">
+                    <td class="px-4 py-2 font-mono text-indigo-300" x-text="q.name"></td>
+                    <td class="px-4 py-2"><span :class="statusBadgeClass(q.status)" x-text="q.status"></span></td>
+                    <td class="px-4 py-2 text-right" x-text="q.admittedWorkloads"></td>
+                    <td class="px-4 py-2 text-right" x-text="q.pendingWorkloads"></td>
+                    <td class="px-4 py-2" x-text="q.nominalCpu || '—'"></td>
+                    <td class="px-4 py-2" x-text="q.usedCpu || '—'"></td>
+                    <td class="px-4 py-2" x-text="q.nominalMemory || '—'"></td>
+                    <td class="px-4 py-2" x-text="q.usedMemory || '—'"></td>
+                    <td class="px-4 py-2 text-gray-400" x-text="q.age"></td>
+                    <td class="px-4 py-2">
+                      <button @click="openYaml('clusterqueue', '', q.name)" class="btn-secondary">YAML</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- LocalQueues tab -->
+        <div x-show="queueTab === 'LocalQueues'">
+          <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-700 text-gray-400 text-xs uppercase">
+                  <th class="px-4 py-3 text-left">Name</th>
+                  <th class="px-4 py-3 text-left">Namespace</th>
+                  <th class="px-4 py-3 text-left">ClusterQueue</th>
+                  <th class="px-4 py-3 text-left">Status</th>
+                  <th class="px-4 py-3 text-right">Admitted</th>
+                  <th class="px-4 py-3 text-right">Pending</th>
+                  <th class="px-4 py-3 text-left">Age</th>
+                  <th class="px-4 py-3 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-if="filteredLocalQueues.length === 0">
+                  <tr><td colspan="8" class="px-4 py-6 text-center text-gray-500">No local queues found</td></tr>
+                </template>
+                <template x-for="q in filteredLocalQueues" :key="q.namespace + '/' + q.name">
+                  <tr class="border-b border-gray-700 hover:bg-gray-750">
+                    <td class="px-4 py-2 font-mono text-indigo-300" x-text="q.name"></td>
+                    <td class="px-4 py-2 text-gray-300" x-text="q.namespace"></td>
+                    <td class="px-4 py-2 text-gray-300" x-text="q.clusterQueue || '—'"></td>
+                    <td class="px-4 py-2"><span :class="statusBadgeClass(q.status)" x-text="q.status"></span></td>
+                    <td class="px-4 py-2 text-right" x-text="q.admittedWorkloads"></td>
+                    <td class="px-4 py-2 text-right" x-text="q.pendingWorkloads"></td>
+                    <td class="px-4 py-2 text-gray-400" x-text="q.age"></td>
+                    <td class="px-4 py-2 whitespace-nowrap" @click.stop>
+                      <button @click="openYaml('localqueue', q.namespace, q.name)" class="btn-secondary mr-1">YAML</button>
+                      <button @click="openYamlEdit('localqueue', q.namespace, q.name)" class="btn-primary mr-1">Edit</button>
+                      <button @click="openDeleteQueue(q)" class="btn-danger">Delete</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ JOBS PAGE ═══ -->
+      <div x-show="currentPage === 'jobs'">
+        <div class="flex items-center justify-between mb-5">
+          <h1 class="text-xl font-semibold">Jobs &amp; Workloads</h1>
+          <button @click="addJobModal.open = true; addJobModal.result = null; addJobModal.errors = {}; addJobModal.name = ''; addJobModal.namespace = selectedNamespace; addJobModal.queueName = ''; addJobModal.selectedTemplate = ''"
+                  class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded transition-colors">
+            + Add Job
+          </button>
+        </div>
+
+        <!-- Status summary strip -->
+        <div class="flex gap-3 mb-5">
+          <template x-for="s in ['Running','Pending','Failed','Completed']" :key="s">
+            <div class="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 flex items-center gap-2">
+              <span :class="dotClass(s)">●</span>
+              <span class="text-xs text-gray-400" x-text="s"></span>
+              <span class="font-bold text-sm" x-text="workloadCountByStatus(s)"></span>
+            </div>
+          </template>
+        </div>
+
+        <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-700 text-gray-400 text-xs uppercase">
+                <th class="px-4 py-3 text-left">Name</th>
+                <th class="px-4 py-3 text-left">Namespace</th>
+                <th class="px-4 py-3 text-left">Queue</th>
+                <th class="px-4 py-3 text-left">ClusterQueue</th>
+                <th class="px-4 py-3 text-left">Status</th>
+                <th class="px-4 py-3 text-center">Admitted</th>
+                <th class="px-4 py-3 text-center">Finished</th>
+                <th class="px-4 py-3 text-left">Age</th>
+                <th class="px-4 py-3 text-left">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-if="filteredWorkloads.length === 0">
+                <tr><td colspan="9" class="px-4 py-6 text-center text-gray-500">No workloads found</td></tr>
+              </template>
+              <template x-for="w in filteredWorkloads" :key="w.namespace + '/' + w.name">
+                <tr class="border-b border-gray-700 hover:bg-gray-750 cursor-pointer"
+                    @click="openDiagnostics(w)"
+                    title="Click row for diagnostics">
+                  <td class="px-4 py-2 font-mono text-indigo-300" x-text="w.name"></td>
+                  <td class="px-4 py-2 text-gray-300" x-text="w.namespace"></td>
+                  <td class="px-4 py-2 text-gray-300" x-text="w.queue || '—'"></td>
+                  <td class="px-4 py-2 text-gray-300" x-text="w.clusterQueue || '—'"></td>
+                  <td class="px-4 py-2"><span :class="statusBadgeClass(w.status)" x-text="w.status"></span></td>
+                  <td class="px-4 py-2 text-center" x-text="w.admitted ? '✓' : '—'"></td>
+                  <td class="px-4 py-2 text-center" x-text="w.finished ? '✓' : '—'"></td>
+                  <td class="px-4 py-2 text-gray-400" x-text="w.age"></td>
+                  <td class="px-4 py-2 whitespace-nowrap" @click.stop>
+                    <button @click="openDiagnostics(w)" class="btn-secondary mr-1">Details</button>
+                    <button @click="openYaml('job', w.namespace, w.jobName || w.name)" class="btn-secondary mr-1">YAML</button>
+                    <button @click="openDeleteJob(w)" class="btn-danger">Delete</button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ TROUBLESHOOTING PAGE ═══ -->
+      <div x-show="currentPage === 'troubleshoot'">
+        <h1 class="text-xl font-semibold mb-5">Troubleshooting</h1>
+
+        <!-- Pending workloads table -->
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-yellow-400 uppercase tracking-wider">⚠ Pending Workloads</h2>
+          <span x-show="selectedNamespace" class="text-xs text-gray-400">
+            Filtered: <span class="text-indigo-300" x-text="selectedNamespace"></span>
+          </span>
+        </div>
+        <template x-if="filteredStuckWorkloads.length === 0">
+          <div class="bg-gray-800 rounded-lg border border-gray-700 p-6 text-center text-gray-500 text-sm mb-8">
+            No pending workloads 🎉
+          </div>
+        </template>
+        <template x-if="filteredStuckWorkloads.length > 0">
+          <div class="bg-gray-800 rounded-lg border border-yellow-800/50 overflow-x-auto mb-8">
+            <table class="min-w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-700 text-gray-400 text-xs uppercase">
+                  <th class="px-4 py-3 text-left">Workload</th>
+                  <th class="px-4 py-3 text-left">Namespace</th>
+                  <th class="px-4 py-3 text-left">Queue</th>
+                  <th class="px-4 py-3 text-left">Waiting</th>
+                  <th class="px-4 py-3 text-left">Root Cause</th>
+                  <th class="px-4 py-3 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="w in filteredStuckWorkloads" :key="w.namespace + '/' + w.name">
+                  <tr class="border-b border-gray-700 hover:bg-gray-750 cursor-pointer"
+                      @click="openDiagnostics(w)">
+                    <td class="px-4 py-2 font-mono text-yellow-300" x-text="w.name"></td>
+                    <td class="px-4 py-2 text-gray-300" x-text="w.namespace"></td>
+                    <td class="px-4 py-2 text-gray-300" x-text="w.queue || '—'"></td>
+                    <td class="px-4 py-2 text-gray-400" x-text="w.age"></td>
+                    <td class="px-4 py-2">
+                      <span class="bg-yellow-900/60 text-yellow-200 rounded px-2 py-0.5 text-xs"
+                            x-text="rootCauseLabelFor(w)"></span>
+                    </td>
+                    <td class="px-4 py-2 whitespace-nowrap" @click.stop>
+                      <button @click="openDiagnostics(w)" class="btn-secondary mr-1">Details</button>
+                      <button x-show="(w.rootCause || rootCauseCodeFor(w)) === 'QUEUE_MISSING'"
+                              @click="createQueueModal.open = true; createQueueModal.result = null; createQueueModal.errors = {}; createQueueModal.name = (w.queue || ''); createQueueModal.namespace = w.namespace; createQueueModal.clusterQueue = ''"
+                              class="btn-primary mr-1">Create Queue</button>
+                      <button @click="openDeleteJob(w)" class="btn-danger">Delete</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </template>
+
+        <!-- Failed workloads — diagnostic cards -->
+        <h2 class="text-sm font-semibold text-red-400 uppercase tracking-wider mb-3">✕ Failed Workloads</h2>
+        <template x-if="filteredFailedWorkloads.length === 0">
+          <div class="bg-gray-800 rounded-lg border border-gray-700 p-6 text-center text-gray-500 text-sm mb-8">
+            No failed workloads
+          </div>
+        </template>
+        <div class="space-y-3 mb-8">
+          <template x-for="w in filteredFailedWorkloads" :key="w.namespace + '/' + w.name">
+            <div class="bg-gray-800 rounded-lg border border-red-800/50 p-4">
+              <div class="flex items-start justify-between mb-2">
+                <div>
+                  <span class="font-mono text-red-300 font-semibold" x-text="w.name"></span>
+                  <span class="text-gray-400 text-xs ml-2"
+                        x-text="w.namespace + ' · ' + (w.queue || 'no queue') + ' · ' + w.age"></span>
+                </div>
+                <button @click="openDiagnostics(w)" class="btn-secondary shrink-0 ml-3">Details</button>
+              </div>
+              <div class="bg-red-900/30 border border-red-700/50 rounded p-3 text-xs">
+                <p class="text-gray-300" x-text="w.message || 'Job failed — click Details for conditions and logs.'"></p>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- Inactive Queues table -->
+        <h2 class="text-sm font-semibold text-red-400 uppercase tracking-wider mb-3">✕ Inactive Queues</h2>
+        <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-700 text-gray-400 text-xs uppercase">
+                <th class="px-4 py-3 text-left">Name</th>
+                <th class="px-4 py-3 text-left">Status</th>
+                <th class="px-4 py-3 text-right">Pending</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-if="inactiveQueues.length === 0">
+                <tr><td colspan="3" class="px-4 py-6 text-center text-gray-500">All queues are active</td></tr>
+              </template>
+              <template x-for="q in inactiveQueues" :key="q.name">
+                <tr class="border-b border-gray-700 hover:bg-gray-750">
+                  <td class="px-4 py-2 font-mono text-red-300" x-text="q.name"></td>
+                  <td class="px-4 py-2"><span class="bg-red-900 text-red-300 rounded px-2 py-0.5 text-xs" x-text="q.status"></span></td>
+                  <td class="px-4 py-2 text-right" x-text="q.pendingWorkloads"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+<script>
+function app() {
+  return {
+    // ── Navigation ──────────────────────────────────────────────────────────
+    currentPage: 'dashboard',
+    nav: [
+      { id: 'dashboard',    label: '📊 Dashboard'   },
+      { id: 'queues',       label: '📄 Queues'       },
+      { id: 'jobs',         label: '🔧 Jobs'         },
+      { id: 'troubleshoot', label: '🔍 Troubleshoot' },
+    ],
+
+    // ── Filter state ─────────────────────────────────────────────────────────
+    selectedNamespace: '',
+    jobStatusFilter: 'All',
+    queueTab: 'ClusterQueues',
+
+    // ── Diagnostics drawer ───────────────────────────────────────────────────
+    selectedJob: null,
+    diagnosticsLoading: false,
+
+    // ── YAML modal ────────────────────────────────────────────────────────────
+    yamlModal: {
+      open: false, loading: false, saving: false, readOnly: false,
+      title: '', yaml: '', error: '', saveError: '',
+      _namespace: '', _name: '', _kind: '',
+    },
+
+    // ── Delete modal ─────────────────────────────────────────────────────────
+    deleteModal: {
+      open: false, loading: false, deleting: false,
+      kind: '', namespace: '', name: '',
+      status: '', admittedWorkloads: 0, pendingWorkloads: 0,
+      blocked: false, blockReason: '', error: '',
+      deleteWorkload: true,
+    },
+
+    // ── Create Queue modal ────────────────────────────────────────────────────
+    createQueueModal: {
+      open: false, submitting: false, result: null, errors: {},
+      name: '', namespace: '', clusterQueue: '',
+    },
+
+    // ── Add Job modal ─────────────────────────────────────────────────────────
+    addJobModal: {
+      open: false, submitting: false, result: null, errors: {},
+      name: '', namespace: '', queueName: '',
+      selectedTemplate: '',
+      image: 'busybox', command: 'sleep 120',
+      cpuRequest: '100m', memoryRequest: '128Mi',
+    },
+
+    // ── Data (internal maps — use computed getters below for templates) ──────
+    dashboard: {},
+    _clusterQueuesMap: {},
+    _localQueuesMap: {},
+    _workloadsMap: {},
+    namespaces: [],
+
+    // ── Computed arrays from maps ─────────────────────────────────────────────
+    get clusterQueues() { return Object.values(this._clusterQueuesMap); },
+    get localQueues()   { return Object.values(this._localQueuesMap);   },
+    get workloads()     { return Object.values(this._workloadsMap);     },
+
+    // ── SSE connection ────────────────────────────────────────────────────────
+    sseConnected: false,
+    lastUpdated: '',
+
+    // ── Computed: filtered local queues (sidebar namespace filter) ───────────
+    get filteredLocalQueues() {
+      if (!this.selectedNamespace) return this.localQueues;
+      return this.localQueues.filter(q => q.namespace === this.selectedNamespace);
+    },
+
+    // ── Computed: queues scoped to the Add Job form's selected namespace ────────
+    // This is the critical guard that prevents the "LocalQueue doesn't exist" error:
+    // only queues that live in the same namespace as the job may be selected.
+    get queuesForNamespace() {
+      if (!this.jobForm.namespace) return [];
+      return this.localQueues.filter(q => q.namespace === this.jobForm.namespace);
+    },
+
+    // ── Computed: filtered workloads ─────────────────────────────────────────
+    get filteredWorkloads() {
+      let list = this.workloads;
+      if (this.selectedNamespace)
+        list = list.filter(w => w.namespace === this.selectedNamespace);
+      if (this.jobStatusFilter !== 'All')
+        list = list.filter(w => w.status === this.jobStatusFilter);
+      return list;
+    },
+
+    // ── Computed: troubleshooting views ──────────────────────────────────────
+    get stuckWorkloads() {
+      return this.workloads.filter(w => w.status === 'Pending');
+    },
+    get failedWorkloads() {
+      return this.workloads.filter(w => w.status === 'Failed');
+    },
+    get filteredStuckWorkloads() {
+      const list = this.stuckWorkloads;
+      if (!this.selectedNamespace) return list;
+      return list.filter(w => w.namespace === this.selectedNamespace);
+    },
+    get filteredFailedWorkloads() {
+      const list = this.failedWorkloads;
+      if (!this.selectedNamespace) return list;
+      return list.filter(w => w.namespace === this.selectedNamespace);
+    },
+    get inactiveQueues() {
+      return this.clusterQueues.filter(q => q.status !== 'Active');
+    },
+
+    // ── Computed: queues for Add Job modal (namespace-scoped) ─────────────────
+    get queuesForAddJobModal() {
+      if (!this.addJobModal.namespace) return [];
+      return this.localQueues.filter(q => q.namespace === this.addJobModal.namespace);
+    },
+
+    // ── Root cause helpers (client-side best-effort from workload.message) ────
+    rootCauseCodeFor(w) {
+      if (!w || !w.message) return 'NOT_YET_EVALUATED';
+      const m = w.message.toLowerCase();
+      if (m.includes("doesn't exist") || m.includes('does not exist') || m.includes('not found'))
+        return 'QUEUE_MISSING';
+      if (m.includes('insufficient') || m.includes('quota') || m.includes('exceed') || m.includes('no fits'))
+        return 'QUOTA_EXHAUSTED';
+      if (m.includes('inactive') || m.includes('not active') || m.includes('terminating'))
+        return 'CLUSTER_QUEUE_INACTIVE';
+      return 'UNKNOWN';
+    },
+
+    rootCauseLabelFor(w) {
+      const code = w.rootCause || this.rootCauseCodeFor(w);
+      const labels = {
+        QUEUE_MISSING:           '🚫 Queue not found',
+        CLUSTER_QUEUE_INACTIVE:  '⛔ ClusterQueue inactive',
+        LOCAL_QUEUE_INACTIVE:    '⛔ LocalQueue inactive',
+        QUOTA_EXHAUSTED:         '📉 Quota exhausted',
+        PREEMPTED:               '🔄 Preempted',
+        CONFIG_INVALID:          '⚠️ Invalid configuration',
+        NOT_YET_EVALUATED:       '⏳ Not yet evaluated',
+        RUNNING:                 '✅ Running normally',
+        COMPLETED:               '✅ Completed successfully',
+        UNKNOWN:                 'ℹ️ Waiting',
+      };
+      return labels[code] ?? 'ℹ️ Waiting';
+    },
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    workloadCountByStatus(status) {
+      return this.workloads.filter(w => w.status === status).length;
+    },
+
+    statusBadgeClass(status) {
+      const map = {
+        'Running':  'bg-green-900 text-green-300 rounded px-2 py-0.5 text-xs font-semibold',
+        'Active':   'bg-green-900 text-green-300 rounded px-2 py-0.5 text-xs font-semibold',
+        'Pending':  'bg-yellow-900 text-yellow-300 rounded px-2 py-0.5 text-xs font-semibold',
+        'Failed':   'bg-red-900 text-red-300 rounded px-2 py-0.5 text-xs font-semibold',
+        'Completed':'bg-gray-700 text-gray-300 rounded px-2 py-0.5 text-xs font-semibold',
+      };
+      return map[status] ?? 'bg-gray-700 text-gray-400 rounded px-2 py-0.5 text-xs font-semibold';
+    },
+
+    dotClass(status) {
+      const map = {
+        'Running':  'text-green-400',
+        'Pending':  'text-yellow-400',
+        'Failed':   'text-red-400',
+        'Completed':'text-gray-400',
+      };
+      return map[status] ?? 'text-gray-400';
+    },
+
+    setLastUpdated() {
+      this.lastUpdated = 'Updated ' + new Date().toLocaleTimeString();
+    },
+
+    // ── Initialise ────────────────────────────────────────────────────────────
+    async init() {
+      // Connect SSE first so the server-sent snapshot (current state) arrives
+      // while the REST calls are still in flight — whichever arrives first wins,
+      // and Alpine's reactivity means the UI is correct either way.
+      this.connectSSE();
+
+      await Promise.all([
+        this.loadDashboard(),
+        this.loadClusterQueues(),
+        this.loadLocalQueues(),
+        this.loadWorkloads(),
+        this.loadNamespaces(),
+        this.loadJobTemplates(),
+      ]);
+    },
+
+    async loadDashboard() {
+      try {
+        const res = await fetch('/api/dashboard');
+        if (res.ok) this.dashboard = await res.json();
+      } catch(e) { console.error('loadDashboard', e); }
+    },
+
+    async loadClusterQueues() {
+      try {
+        const res = await fetch('/api/queues/cluster');
+        if (res.ok) {
+          const arr = await res.json();
+          this._clusterQueuesMap = Object.fromEntries(arr.map(q => [q.name, q]));
+        }
+      } catch(e) { console.error('loadClusterQueues', e); }
+    },
+
+    async loadLocalQueues() {
+      try {
+        const res = await fetch('/api/queues/local');
+        if (res.ok) {
+          const arr = await res.json();
+          this._localQueuesMap = Object.fromEntries(arr.map(q => [q.namespace + '/' + q.name, q]));
+        }
+      } catch(e) { console.error('loadLocalQueues', e); }
+    },
+
+    async loadWorkloads() {
+      try {
+        const res = await fetch('/api/workloads');
+        if (res.ok) {
+          const arr = await res.json();
+          this._workloadsMap = Object.fromEntries(arr.map(w => [w.namespace + '/' + w.name, w]));
+        }
+      } catch(e) { console.error('loadWorkloads', e); }
+    },
+
+    async loadNamespaces() {
+      try {
+        const res = await fetch('/api/namespaces');
+        if (res.ok) this.namespaces = await res.json();
+      } catch(e) { console.error('loadNamespaces', e); }
+    },
+
+    // ── SSE listener ─────────────────────────────────────────────────────────
+    connectSSE() {
+      const es = new EventSource('/api/stream');
+
+      es.onopen = () => { this.sseConnected = true; };
+      es.onerror = () => {
+        this.sseConnected = false;
+        // EventSource auto-reconnects; just update the indicator
+      };
+
+      es.onmessage = (event) => {
+        try {
+          const envelope = JSON.parse(event.data);
+          this.handleEvent(envelope);
+          this.setLastUpdated();
+        } catch(e) {
+          console.error('SSE parse error', e);
+        }
+      };
+    },
+
+    // Apply a single map update immutably so Alpine's reactivity triggers.
+    _applyMapUpdate(mapProp, action, data, keyFn) {
+      if (action === 'snapshot') {
+        this[mapProp] = Object.fromEntries((data ?? []).map(x => [keyFn(x), x]));
+      } else if (action === 'upsert') {
+        this[mapProp] = { ...this[mapProp], [keyFn(data)]: data };
+      } else if (action === 'delete') {
+        const next = { ...this[mapProp] };
+        delete next[data.namespace ? data.namespace + '/' + data.name : data.name];
+        this[mapProp] = next;
+      } else {
+        // Legacy / unknown action — treat as full snapshot
+        this[mapProp] = Object.fromEntries((data ?? []).map(x => [keyFn(x), x]));
+      }
+    },
+
+    handleEvent(envelope) {
+      const { type, resource, action, data } = envelope;
+      switch (type) {
+        case 'workload_update':
+          this._applyMapUpdate('_workloadsMap', action, data,
+            w => w.namespace + '/' + w.name);
+          break;
+        case 'queue_update':
+          if (resource === 'clusterqueues')
+            this._applyMapUpdate('_clusterQueuesMap', action, data, q => q.name);
+          else if (resource === 'localqueues')
+            this._applyMapUpdate('_localQueuesMap', action, data,
+              q => q.namespace + '/' + q.name);
+          break;
+        case 'dashboard_update':
+          this.dashboard = data ?? {};
+          break;
+      }
+    },
+
+    // ── Add Queue form ────────────────────────────────────────────────────────
+    queueForm: {
+      name: '', namespace: '', clusterQueue: '',
+      submitting: false, result: null, errors: {},
+    },
+
+    async submitQueue() {
+      this.queueForm.errors = {};
+      this.queueForm.result = null;
+      const { name, namespace, clusterQueue } = this.queueForm;
+      const errs = {};
+      if (!name.trim())         errs.name         = 'Required';
+      if (!namespace.trim())    errs.namespace    = 'Required';
+      if (!clusterQueue.trim()) errs.clusterQueue = 'Required';
+      if (Object.keys(errs).length) { this.queueForm.errors = errs; return; }
+
+      this.queueForm.submitting = true;
+      try {
+        const res = await fetch('/api/queues', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, namespace, clusterQueue }),
+        });
+        const json = await res.json();
+        this.queueForm.result = json;
+        if (json.success) {
+          this.queueForm.name = '';
+          this.queueForm.namespace = '';
+          this.queueForm.clusterQueue = '';
+        }
+      } catch(e) {
+        this.queueForm.result = { success: false, message: 'Network error: ' + e.message, steps: [] };
+      } finally {
+        this.queueForm.submitting = false;
+      }
+    },
+
+    // ── Add Job form ──────────────────────────────────────────────────────────
+    jobTemplates: [],
+    jobForm: {
+      name: '', namespace: '', queueName: '',
+      selectedTemplate: '',
+      image: 'busybox', command: 'sleep 120',
+      cpuRequest: '100m', memoryRequest: '128Mi',
+      submitting: false, result: null, errors: {},
+    },
+
+    async loadJobTemplates() {
+      try {
+        const res = await fetch('/api/job-templates');
+        if (res.ok) this.jobTemplates = await res.json();
+      } catch(e) { console.error('loadJobTemplates', e); }
+    },
+
+    applyJobTemplate() {
+      const t = this.jobTemplates.find(x => x.id === this.jobForm.selectedTemplate);
+      if (!t) return;
+      this.jobForm.image       = t.image;
+      this.jobForm.command     = t.command;
+      this.jobForm.cpuRequest  = t.cpuRequest;
+      this.jobForm.memoryRequest = t.memoryRequest;
+    },
+
+    resetJobForm() {
+      this.jobForm = {
+        name: '', namespace: '', queueName: '',
+        selectedTemplate: '',
+        image: 'busybox', command: 'sleep 120',
+        cpuRequest: '100m', memoryRequest: '128Mi',
+        submitting: false, result: null, errors: {},
+      };
+    },
+
+    async submitJob() {
+      this.jobForm.errors = {};
+      this.jobForm.result = null;
+      const { name, namespace, queueName, image, command, cpuRequest, memoryRequest } = this.jobForm;
+      const errs = {};
+      if (!name.trim())      errs.name      = 'Required';
+      if (!namespace.trim()) errs.namespace = 'Required';
+      if (!queueName.trim()) {
+        errs.queueName = 'Required';
+      } else {
+        // Critical guard: the queue must exist in the job's namespace.
+        // This prevents the Kueue error: "LocalQueue X doesn't exist".
+        const exists = this.queuesForNamespace.some(q => q.name === queueName);
+        if (!exists) {
+          errs.queueName = `Queue '${queueName}' does not exist in namespace '${namespace}'. ` +
+            `Job and LocalQueue must be in the same namespace.`;
+        }
+      }
+      if (Object.keys(errs).length) { this.jobForm.errors = errs; return; }
+
+      this.jobForm.submitting = true;
+      try {
+        const res = await fetch('/api/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, namespace, queueName, image, command, cpuRequest, memoryRequest }),
+        });
+        const json = await res.json();
+        this.jobForm.result = json;
+        if (json.success) {
+          this.jobForm.name = '';
+          this.jobForm.result = json;
+        }
+      } catch(e) {
+        this.jobForm.result = { success: false, message: 'Network error: ' + e.message, steps: [] };
+      } finally {
+        this.jobForm.submitting = false;
+      }
+    },
+
+    // ── YAML modal ────────────────────────────────────────────────────────────
+    async openYaml(kind, namespace, name) {
+      this.yamlModal = {
+        open: true, loading: true, saving: false,
+        readOnly: kind === 'clusterqueue',
+        title: `${kind}: ${namespace ? namespace + '/' : ''}${name}`,
+        yaml: '', error: '', saveError: '',
+        _namespace: namespace, _name: name, _kind: kind,
+      };
+      try {
+        const url = kind === 'clusterqueue'
+          ? `/api/queues/cluster/${encodeURIComponent(name)}/yaml`
+          : kind === 'localqueue'
+            ? `/api/queues/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/yaml`
+            : `/api/jobs/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/yaml`;
+        const res = await fetch(url);
+        const json = await res.json();
+        this.yamlModal.yaml = json.yaml ?? json.error ?? 'No content';
+      } catch(e) {
+        this.yamlModal.error = 'Failed to load: ' + e.message;
+      } finally {
+        this.yamlModal.loading = false;
+      }
+    },
+
+    openYamlEdit(kind, namespace, name) {
+      this.openYaml(kind, namespace, name);
+      // readOnly is already false for non-clusterqueue kinds
+    },
+
+    async saveYaml() {
+      const m = this.yamlModal;
+      if (m.readOnly) return;
+      m.saving = true; m.saveError = '';
+      try {
+        const url = m._kind === 'localqueue'
+          ? `/api/queues/${encodeURIComponent(m._namespace)}/${encodeURIComponent(m._name)}/yaml`
+          : `/api/jobs/${encodeURIComponent(m._namespace)}/${encodeURIComponent(m._name)}/yaml`;
+        // Validate it's parseable JSON before sending
+        try { JSON.parse(m.yaml); } catch(e) {
+          m.saveError = 'Invalid JSON: ' + e.message;
+          m.saving = false; return;
+        }
+        const res = await fetch(url, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ yaml: m.yaml }),
+        });
+        const result = await res.json();
+        if (result.success) {
+          m.open = false;
+        } else {
+          m.saveError = result.error || result.message || 'Save failed';
+        }
+      } catch(e) {
+        m.saveError = 'Network error: ' + e.message;
+      } finally {
+        m.saving = false;
+      }
+    },
+
+    copyYaml() {
+      navigator.clipboard.writeText(this.yamlModal.yaml).catch(() => {});
+    },
+
+    // ── Delete job modal ──────────────────────────────────────────────────────
+    openDeleteJob(w) {
+      // Use the real K8s Job name (from ownerReferences) so the DELETE
+      // /api/jobs/{ns}/{name} call targets the correct Kubernetes Job.
+      // Falls back to the workload name if no ownerReference was resolved.
+      this.deleteModal = {
+        open: true, loading: false, deleting: false,
+        kind: 'job',
+        namespace: w.namespace, name: w.jobName || w.name,
+        status: w.status, admittedWorkloads: 0, pendingWorkloads: 0,
+        blocked: false, blockReason: '', error: '',
+        deleteWorkload: true,
+      };
+    },
+
+    // ── Delete queue modal ────────────────────────────────────────────────────
+    openDeleteQueue(q) {
+      this.deleteModal = {
+        open: true, loading: false, deleting: false,
+        kind: 'localqueue',
+        namespace: q.namespace, name: q.name,
+        status: q.status,
+        admittedWorkloads: q.admittedWorkloads ?? 0,
+        pendingWorkloads: q.pendingWorkloads ?? 0,
+        blocked: (q.admittedWorkloads ?? 0) > 0,
+        blockReason: (q.admittedWorkloads ?? 0) > 0
+          ? `Cannot delete: ${q.admittedWorkloads} workload(s) are currently admitted.`
+          : '',
+        error: '', deleteWorkload: false,
+      };
+    },
+
+    async confirmDelete() {
+      const m = this.deleteModal;
+      if (m.blocked) return;
+      m.deleting = true; m.error = '';
+      try {
+        let res;
+        if (m.kind === 'job') {
+          res = await fetch(`/api/jobs/${encodeURIComponent(m.namespace)}/${encodeURIComponent(m.name)}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deleteWorkload: m.deleteWorkload }),
+          });
+        } else {
+          res = await fetch(`/api/queues/${encodeURIComponent(m.namespace)}/${encodeURIComponent(m.name)}`, {
+            method: 'DELETE',
+          });
+        }
+        const result = await res.json();
+        if (result.success) {
+          m.open = false;
+          const label = m.kind === 'job' ? 'Job' : 'Queue';
+          this.showToast(`${label} '${m.name}' deleted.`);
+        } else if (result.blocked) {
+          m.blocked = true;
+          m.blockReason = result.blockReason || 'Delete blocked.';
+        } else {
+          m.error = result.error || 'Delete failed.';
+        }
+      } catch(e) {
+        m.error = 'Network error: ' + e.message;
+      } finally {
+        m.deleting = false;
+      }
+    },
+
+    // ── Create Queue modal ────────────────────────────────────────────────────
+    async submitCreateQueue() {
+      const m = this.createQueueModal;
+      m.errors = {}; m.result = null;
+      const errs = {};
+      if (!m.name.trim())         errs.name         = 'Required';
+      if (!m.namespace.trim())    errs.namespace    = 'Required';
+      if (!m.clusterQueue.trim()) errs.clusterQueue = 'Required';
+      if (Object.keys(errs).length) { m.errors = errs; return; }
+      m.submitting = true;
+      try {
+        const res = await fetch('/api/queues', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: m.name, namespace: m.namespace, clusterQueue: m.clusterQueue }),
+        });
+        m.result = await res.json();
+        if (m.result.success) {
+          m.open = false;
+          this.showToast('Queue created successfully.');
+        }
+      } catch(e) {
+        m.result = { success: false, message: 'Network error: ' + e.message, steps: [] };
+      } finally {
+        m.submitting = false;
+      }
+    },
+
+    // ── Add Job modal ─────────────────────────────────────────────────────────
+    get queuesForAddJobModalNs() {
+      if (!this.addJobModal.namespace) return [];
+      return this.localQueues.filter(q => q.namespace === this.addJobModal.namespace);
+    },
+
+    async submitAddJob() {
+      const m = this.addJobModal;
+      m.errors = {}; m.result = null;
+      const errs = {};
+      if (!m.name.trim())      errs.name      = 'Required';
+      if (!m.namespace.trim()) errs.namespace = 'Required';
+      if (!m.queueName.trim()) {
+        errs.queueName = 'Required';
+      } else {
+        const exists = this.localQueues.some(
+          q => q.namespace === m.namespace && q.name === m.queueName);
+        if (!exists)
+          errs.queueName = `Queue '${m.queueName}' not found in namespace '${m.namespace}'.`;
+      }
+      if (Object.keys(errs).length) { m.errors = errs; return; }
+      m.submitting = true;
+      try {
+        const { name, namespace, queueName, image, command, cpuRequest, memoryRequest } = m;
+        const res = await fetch('/api/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, namespace, queueName, image, command, cpuRequest, memoryRequest }),
+        });
+        m.result = await res.json();
+        if (m.result.success) {
+          m.open = false;
+          this.showToast('Job created successfully.');
+        }
+      } catch(e) {
+        m.result = { success: false, message: 'Network error: ' + e.message, steps: [] };
+      } finally {
+        m.submitting = false;
+      }
+    },
+
+    applyAddJobTemplate() {
+      const t = this.jobTemplates.find(x => x.id === this.addJobModal.selectedTemplate);
+      if (!t) return;
+      this.addJobModal.image        = t.image;
+      this.addJobModal.command      = t.command;
+      this.addJobModal.cpuRequest   = t.cpuRequest;
+      this.addJobModal.memoryRequest = t.memoryRequest;
+    },
+
+    // ── Diagnostics drawer ────────────────────────────────────────────────────
+    async openDiagnostics(w) {
+      // Show drawer immediately with basic info already in the store
+      this.selectedJob = w;
+      this.diagnosticsLoading = true;
+      try {
+        const res = await fetch(
+          `/api/jobs/${encodeURIComponent(w.namespace)}/${encodeURIComponent(w.name)}`);
+        if (res.ok) this.selectedJob = await res.json();
+      } catch(e) {
+        console.error('openDiagnostics', e);
+      } finally {
+        this.diagnosticsLoading = false;
+      }
+    },
+
+    closeDiagnostics() {
+      this.selectedJob = null;
+      this.diagnosticsLoading = false;
+    },
+
+    // Returns a short plain-English reason using only data already in the store
+    // (no API call). Used for the Troubleshooting page inline column.
+    diagnosticSummaryFor(w) {
+      if (!w) return '';
+      if (w.status === 'Running')   return `Running — admitted to the cluster queue.`;
+      if (w.status === 'Completed') return 'Completed — finished successfully.';
+      if (w.status === 'Failed')    return `Failed — ${w.message || 'check conditions for details.'}`;
+      if (!w.message) return 'Pending — waiting to be evaluated by the scheduler.';
+      const m = w.message.toLowerCase();
+      if (m.includes("doesn't exist") || m.includes('does not exist') || m.includes('not found'))
+        return `Pending because ${w.message.replace(/\.?$/, '.')} Check the LocalQueue exists in namespace '${w.namespace}'.`;
+      if (m.includes('insufficient') || m.includes('quota') || m.includes('exceed'))
+        return 'Pending because the queue does not have sufficient resource quota.';
+      if (m.includes('inactive') || m.includes('not active'))
+        return 'Pending because the ClusterQueue is not currently active.';
+      return `Pending: ${w.message}`;
+    },
+
+    // ── Toast notification ─────────────────────────────────────────────────────
+    toast: { visible: false, message: '' },
+    _toastTimer: null,
+
+    showToast(message) {
+      if (this._toastTimer) clearTimeout(this._toastTimer);
+      this.toast.message = message;
+      this.toast.visible = true;
+      this._toastTimer = setTimeout(() => { this.toast.visible = false; }, 3500);
+    },
+
+    // ── Sample Data ───────────────────────────────────────────────────────────
+    sampleData: {
+      createJobs: true,
+      deleteNamespace: false,
+      busy: false,
+      activeOp: '',
+      result: null,
+    },
+
+    async setupSampleData() {
+      this.sampleData.busy = true;
+      this.sampleData.activeOp = 'setup';
+      this.sampleData.result = null;
+      try {
+        const res = await fetch('/api/sample-data/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ createSampleJobs: true }),
+        });
+        this.sampleData.result = await res.json();
+      } catch(e) {
+        this.sampleData.result = { success: false, message: 'Network error: ' + e.message, steps: [] };
+      } finally {
+        this.sampleData.busy = false;
+        this.sampleData.activeOp = '';
+      }
+    },
+
+    async cleanupSampleData() {
+      this.sampleData.busy = true;
+      this.sampleData.activeOp = 'cleanup';
+      this.sampleData.result = null;
+      try {
+        const res = await fetch('/api/sample-data/cleanup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // Never delete the namespace — only remove demo-labeled resources.
+          body: JSON.stringify({ deleteNamespace: false }),
+        });
+        this.sampleData.result = await res.json();
+      } catch(e) {
+        this.sampleData.result = { success: false, message: 'Network error: ' + e.message, steps: [] };
+      } finally {
+        this.sampleData.busy = false;
+        this.sampleData.activeOp = '';
+      }
+    },
+  };
+}
+</script>
+
+<!-- ═══ YAML MODAL ═══ -->
+<template x-if="yamlModal.open">
+  <div class="modal-backdrop" @click.self="yamlModal.open = false">
+    <div class="modal-box-lg flex flex-col">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-gray-700">
+        <h2 class="text-base font-semibold font-mono" x-text="yamlModal.title"></h2>
+        <div class="flex items-center gap-2">
+          <button @click="copyYaml()" class="btn-secondary" title="Copy to clipboard">Copy</button>
+          <button x-show="!yamlModal.readOnly" @click="saveYaml()"
+                  :disabled="yamlModal.saving"
+                  class="btn-primary">
+            <span x-text="yamlModal.saving ? 'Saving…' : 'Save'"></span>
+          </button>
+          <button @click="yamlModal.open = false" class="text-gray-400 hover:text-white text-xl leading-none ml-2">✕</button>
+        </div>
+      </div>
+      <div class="p-4 flex-1 overflow-y-auto">
+        <template x-if="yamlModal.loading">
+          <p class="text-gray-400 text-sm animate-pulse">Loading…</p>
+        </template>
+        <template x-if="yamlModal.error">
+          <p class="text-red-400 text-sm" x-text="yamlModal.error"></p>
+        </template>
+        <template x-if="yamlModal.saveError">
+          <p class="text-red-400 text-sm mb-2" x-text="yamlModal.saveError"></p>
+        </template>
+        <template x-if="!yamlModal.loading">
+          <textarea x-model="yamlModal.yaml"
+                    :readonly="yamlModal.readOnly"
+                    class="w-full h-[60vh] bg-gray-950 text-green-300 font-mono text-xs p-3 rounded border border-gray-700 focus:outline-none focus:border-indigo-500 resize-none"
+                    spellcheck="false"></textarea>
+        </template>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- ═══ DELETE CONFIRM MODAL ═══ -->
+<template x-if="deleteModal.open">
+  <div class="modal-backdrop" @click.self="deleteModal.open = false">
+    <div class="modal-box p-6">
+      <h2 class="text-lg font-semibold mb-4"
+          x-text="'Delete ' + deleteModal.kind + ': ' + deleteModal.name"></h2>
+
+      <!-- Blocked -->
+      <template x-if="deleteModal.blocked">
+        <div class="bg-red-900/50 border border-red-600 rounded-lg p-4 mb-5 text-sm">
+          <p class="text-red-300 font-semibold mb-1">⛔ Delete blocked</p>
+          <p class="text-red-200" x-text="deleteModal.blockReason"></p>
+        </div>
+      </template>
+
+      <!-- Warning: pending workloads -->
+      <template x-if="!deleteModal.blocked && deleteModal.pendingWorkloads > 0">
+        <div class="bg-yellow-900/40 border border-yellow-700 rounded-lg p-3 mb-4 text-xs text-yellow-200">
+          ⚠ This queue has <strong x-text="deleteModal.pendingWorkloads"></strong> pending workload(s).
+          They will fail after deletion.
+        </div>
+      </template>
+
+      <!-- Warning: active/running job -->
+      <template x-if="!deleteModal.blocked && deleteModal.kind === 'job' && deleteModal.status === 'Running'">
+        <div class="bg-yellow-900/40 border border-yellow-700 rounded-lg p-3 mb-4 text-xs text-yellow-200">
+          ⚠ This job is currently running. Deleting it will terminate the running pod(s).
+        </div>
+      </template>
+
+      <!-- Delete workload checkbox (jobs only) -->
+      <template x-if="deleteModal.kind === 'job' && !deleteModal.blocked">
+        <label class="flex items-center gap-2 text-sm text-gray-300 mb-5 cursor-pointer">
+          <input type="checkbox" x-model="deleteModal.deleteWorkload" class="rounded">
+          Also delete the associated Kueue Workload
+        </label>
+      </template>
+
+      <!-- Error -->
+      <template x-if="deleteModal.error">
+        <p class="text-red-400 text-sm mb-4" x-text="deleteModal.error"></p>
+      </template>
+
+      <div class="flex gap-3">
+        <template x-if="!deleteModal.blocked">
+          <button @click="confirmDelete()"
+                  :disabled="deleteModal.deleting"
+                  class="bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-medium px-5 py-2 rounded transition-colors">
+            <span x-text="deleteModal.deleting ? 'Deleting…' : 'Confirm Delete'"></span>
+          </button>
+        </template>
+        <button @click="deleteModal.open = false" class="btn-secondary px-5 py-2">Cancel</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- ═══ CREATE QUEUE MODAL ═══ -->
+<template x-if="createQueueModal.open">
+  <div class="modal-backdrop" @click.self="createQueueModal.open = false">
+    <div class="modal-box p-6">
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-lg font-semibold">Create Local Queue</h2>
+        <button @click="createQueueModal.open = false" class="text-gray-400 hover:text-white text-xl leading-none">✕</button>
+      </div>
+
+      <template x-if="createQueueModal.result">
+        <div :class="createQueueModal.result.success
+                       ? 'bg-green-900 border-green-600 text-green-200'
+                       : 'bg-red-900 border-red-600 text-red-200'"
+             class="border rounded-lg p-3 mb-4 text-sm">
+          <p class="font-semibold" x-text="createQueueModal.result.message"></p>
+        </div>
+      </template>
+
+      <div class="space-y-4">
+        <div>
+          <label class="form-label">Queue Name <span class="text-red-400">*</span></label>
+          <input type="text" x-model="createQueueModal.name" placeholder="e.g. user-queue" class="form-input"
+                 :class="createQueueModal.errors.name ? 'border-red-500' : ''">
+          <p x-show="createQueueModal.errors.name" class="text-red-400 text-xs mt-1" x-text="createQueueModal.errors.name"></p>
+        </div>
+        <div>
+          <label class="form-label">Namespace <span class="text-red-400">*</span></label>
+          <div class="flex gap-2">
+            <input type="text" x-model="createQueueModal.namespace" placeholder="e.g. demo" class="form-input flex-1"
+                   :class="createQueueModal.errors.namespace ? 'border-red-500' : ''">
+            <select x-show="namespaces.length" x-model="createQueueModal.namespace"
+                    class="bg-gray-700 border border-gray-600 rounded px-2 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500">
+              <option value="">Pick…</option>
+              <template x-for="ns in namespaces" :key="ns.name">
+                <option :value="ns.name" x-text="ns.name"></option>
+              </template>
+            </select>
+          </div>
+          <p x-show="createQueueModal.errors.namespace" class="text-red-400 text-xs mt-1" x-text="createQueueModal.errors.namespace"></p>
+        </div>
+        <div>
+          <label class="form-label">Cluster Queue <span class="text-red-400">*</span></label>
+          <div class="flex gap-2">
+            <input type="text" x-model="createQueueModal.clusterQueue" placeholder="e.g. cluster-queue" class="form-input flex-1"
+                   :class="createQueueModal.errors.clusterQueue ? 'border-red-500' : ''">
+            <select x-show="clusterQueues.length" x-model="createQueueModal.clusterQueue"
+                    class="bg-gray-700 border border-gray-600 rounded px-2 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500">
+              <option value="">Pick…</option>
+              <template x-for="cq in clusterQueues" :key="cq.name">
+                <option :value="cq.name" x-text="cq.name"></option>
+              </template>
+            </select>
+          </div>
+          <p x-show="createQueueModal.errors.clusterQueue" class="text-red-400 text-xs mt-1" x-text="createQueueModal.errors.clusterQueue"></p>
+        </div>
+      </div>
+
+      <div class="flex gap-3 mt-6">
+        <button @click="submitCreateQueue()"
+                :disabled="createQueueModal.submitting"
+                class="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-medium px-5 py-2 rounded transition-colors">
+          <span x-text="createQueueModal.submitting ? 'Creating…' : 'Create Queue'"></span>
+        </button>
+        <button @click="createQueueModal.open = false" class="btn-secondary px-5 py-2">Cancel</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- ═══ ADD JOB MODAL ═══ -->
+<template x-if="addJobModal.open">
+  <div class="modal-backdrop" @click.self="addJobModal.open = false">
+    <div class="modal-box p-6">
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-lg font-semibold">Add Job</h2>
+        <button @click="addJobModal.open = false" class="text-gray-400 hover:text-white text-xl leading-none">✕</button>
+      </div>
+
+      <template x-if="addJobModal.result">
+        <div :class="addJobModal.result.success
+                       ? 'bg-green-900 border-green-600 text-green-200'
+                       : 'bg-red-900 border-red-600 text-red-200'"
+             class="border rounded-lg p-3 mb-4 text-sm">
+          <p class="font-semibold" x-text="addJobModal.result.message"></p>
+        </div>
+      </template>
+
+      <div class="space-y-4">
+        <div>
+          <label class="form-label">Template (optional)</label>
+          <select x-model="addJobModal.selectedTemplate" @change="applyAddJobTemplate()" class="form-input">
+            <option value="">— None —</option>
+            <template x-for="t in jobTemplates" :key="t.id">
+              <option :value="t.id" x-text="t.name + ' — ' + t.description"></option>
+            </template>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">Job Name <span class="text-red-400">*</span></label>
+          <input type="text" x-model="addJobModal.name" placeholder="e.g. my-job-1" class="form-input"
+                 :class="addJobModal.errors.name ? 'border-red-500' : ''">
+          <p x-show="addJobModal.errors.name" class="text-red-400 text-xs mt-1" x-text="addJobModal.errors.name"></p>
+        </div>
+        <div>
+          <label class="form-label">Namespace <span class="text-red-400">*</span></label>
+          <div class="flex gap-2">
+            <input type="text" x-model="addJobModal.namespace" @input="addJobModal.queueName = ''"
+                   placeholder="e.g. demo" class="form-input flex-1"
+                   :class="addJobModal.errors.namespace ? 'border-red-500' : ''">
+            <select x-show="namespaces.length" x-model="addJobModal.namespace"
+                    @change="addJobModal.queueName = ''"
+                    class="bg-gray-700 border border-gray-600 rounded px-2 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500">
+              <option value="">Pick…</option>
+              <template x-for="ns in namespaces" :key="ns.name">
+                <option :value="ns.name" x-text="ns.name"></option>
+              </template>
+            </select>
+          </div>
+          <p x-show="addJobModal.errors.namespace" class="text-red-400 text-xs mt-1" x-text="addJobModal.errors.namespace"></p>
+        </div>
+        <div>
+          <label class="form-label">Queue <span class="text-red-400">*</span></label>
+          <p x-show="!addJobModal.namespace" class="text-yellow-400 text-xs bg-yellow-900/40 border border-yellow-700 rounded px-3 py-2">
+            ⚠ Select a namespace first.
+          </p>
+          <div x-show="addJobModal.namespace && queuesForAddJobModalNs.length === 0"
+               class="text-yellow-300 text-xs bg-yellow-900/40 border border-yellow-700 rounded px-3 py-2">
+            No LocalQueues in <strong x-text="addJobModal.namespace" class="font-mono"></strong>.
+            <button @click="addJobModal.open = false; createQueueModal.open = true; createQueueModal.namespace = addJobModal.namespace; createQueueModal.name = ''; createQueueModal.clusterQueue = ''; createQueueModal.result = null; createQueueModal.errors = {}"
+                    class="underline ml-1 hover:text-white">Create one →</button>
+          </div>
+          <select x-show="addJobModal.namespace && queuesForAddJobModalNs.length > 0"
+                  x-model="addJobModal.queueName" class="form-input"
+                  :class="addJobModal.errors.queueName ? 'border-red-500' : ''">
+            <option value="">— Select a queue —</option>
+            <template x-for="q in queuesForAddJobModalNs" :key="q.name">
+              <option :value="q.name" x-text="q.name"></option>
+            </template>
+          </select>
+          <p x-show="addJobModal.errors.queueName" class="text-red-400 text-xs mt-1" x-text="addJobModal.errors.queueName"></p>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">Image</label>
+            <input type="text" x-model="addJobModal.image" placeholder="busybox" class="form-input">
+          </div>
+          <div>
+            <label class="form-label">Command</label>
+            <input type="text" x-model="addJobModal.command" placeholder="sleep 120" class="form-input">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">CPU Request</label>
+            <input type="text" x-model="addJobModal.cpuRequest" placeholder="100m" class="form-input">
+          </div>
+          <div>
+            <label class="form-label">Memory Request</label>
+            <input type="text" x-model="addJobModal.memoryRequest" placeholder="128Mi" class="form-input">
+          </div>
+        </div>
+      </div>
+
+      <div class="flex gap-3 mt-6">
+        <button @click="submitAddJob()"
+                :disabled="addJobModal.submitting"
+                class="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-medium px-5 py-2 rounded transition-colors">
+          <span x-text="addJobModal.submitting ? 'Submitting…' : 'Submit Job'"></span>
+        </button>
+        <button @click="addJobModal.open = false" class="btn-secondary px-5 py-2">Cancel</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- ═══ DIAGNOSTICS DRAWER ═══ -->
+<!-- Fixed overlay — placed outside the main layout flow but inside the Alpine component (body x-data) -->
+<template x-if="selectedJob !== null">
+  <div class="fixed inset-0 z-50 flex">
+    <!-- Backdrop: click to close -->
+    <div class="flex-1 bg-black/50" @click="closeDiagnostics()"></div>
+    <!-- Panel -->
+    <div class="w-[520px] bg-gray-900 border-l border-gray-700 overflow-y-auto flex-shrink-0 flex flex-col">
+      <div class="p-6">
+        <!-- Header -->
+        <div class="flex items-start justify-between mb-5">
+          <div>
+            <h2 class="text-lg font-semibold font-mono" x-text="selectedJob.name"></h2>
+            <p class="text-xs text-gray-400 mt-0.5" x-text="selectedJob.namespace"></p>
+          </div>
+          <button @click="closeDiagnostics()"
+                  class="text-gray-400 hover:text-white text-xl ml-4 leading-none">✕</button>
+        </div>
+
+        <!-- Loading shimmer -->
+        <template x-if="diagnosticsLoading">
+          <p class="text-gray-400 text-sm animate-pulse mb-4">Loading diagnostics…</p>
+        </template>
+
+        <!-- Status badge -->
+        <div class="mb-4 flex items-center gap-3">
+          <span :class="statusBadgeClass(selectedJob.status)"
+                x-text="selectedJob.status"
+                class="text-sm px-3 py-1"></span>
+          <!-- Completed pill -->
+          <span x-show="selectedJob.status === 'Completed'"
+                class="text-xs text-gray-400">Finished successfully</span>
+          <!-- Running pill -->
+          <span x-show="selectedJob.status === 'Running'"
+                class="text-xs text-green-400">Running normally</span>
+        </div>
+
+        <!-- Completed banner -->
+        <template x-if="selectedJob.status === 'Completed'">
+          <div class="bg-gray-800 border border-gray-600 rounded-lg p-4 mb-5 flex items-start gap-3">
+            <span class="text-gray-400 text-lg leading-none">✓</span>
+            <div class="text-sm">
+              <p class="text-gray-200 font-medium mb-1">Completed</p>
+              <p class="text-gray-400" x-text="selectedJob.diagnosticSummary || 'The workload completed successfully.'"></p>
+            </div>
+          </div>
+        </template>
+
+        <!-- Running banner -->
+        <template x-if="selectedJob.status === 'Running'">
+          <div class="bg-green-900/30 border border-green-700/60 rounded-lg p-4 mb-5 flex items-start gap-3">
+            <span class="text-green-400 text-lg leading-none">●</span>
+            <div class="text-sm">
+              <p class="text-green-200 font-medium mb-1">Running normally</p>
+              <p class="text-green-300/80" x-text="selectedJob.diagnosticSummary || ('Admitted to cluster queue \'' + (selectedJob.clusterQueueName || selectedJob.clusterQueue || 'unknown') + '\'.')"></p>
+            </div>
+          </div>
+        </template>
+
+        <!-- Plain-English diagnostic summary — only for Pending / Failed -->
+        <template x-if="(selectedJob.diagnosticSummary || selectedJob.status) && !['Completed','Running'].includes(selectedJob.status)">
+          <div :class="{
+                 'bg-yellow-900/40 border-yellow-700': selectedJob.status === 'Pending',
+                 'bg-red-900/40 border-red-700':       selectedJob.status === 'Failed',
+                 'bg-gray-700 border-gray-600':         !['Pending','Failed'].includes(selectedJob.status),
+               }"
+               class="border rounded-lg p-4 mb-5">
+            <p class="text-sm" x-text="selectedJob.diagnosticSummary || diagnosticSummaryFor(selectedJob)"></p>
+          </div>
+        </template>
+
+        <!-- Key fields -->
+        <div class="bg-gray-800 rounded-lg border border-gray-700 p-4 mb-5">
+          <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Details</h3>
+          <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <dt class="text-gray-400">Queue</dt>
+            <dd class="font-mono text-gray-200" x-text="selectedJob.queueName || selectedJob.queue || '\u2014'"></dd>
+
+            <dt class="text-gray-400">ClusterQueue</dt>
+            <dd class="font-mono text-gray-200" x-text="selectedJob.clusterQueueName || selectedJob.admissionClusterQueue || selectedJob.clusterQueue || '\u2014'"></dd>
+
+            <dt class="text-gray-400">LocalQueue status</dt>
+            <dd x-text="selectedJob.localQueueStatus || '\u2014'"></dd>
+
+            <dt class="text-gray-400">ClusterQueue status</dt>
+            <dd x-text="selectedJob.clusterQueueStatus || '\u2014'"></dd>
+
+            <dt class="text-gray-400">Admitted</dt>
+            <dd :class="selectedJob.workloadAdmitted || selectedJob.admitted ? 'text-green-400' : 'text-gray-300'"
+                x-text="(selectedJob.workloadAdmitted || selectedJob.admitted) ? '\u2713 Yes' : '\u2717 No'"></dd>
+
+            <dt class="text-gray-400">Finished</dt>
+            <dd x-text="(selectedJob.workloadFinished || selectedJob.finished) ? '\u2713 Yes' : '\u2014'"></dd>
+
+            <dt class="text-gray-400">Job suspended</dt>
+            <dd x-text="selectedJob.jobSuspended ? 'Yes' : 'No'"></dd>
+
+            <dt class="text-gray-400">Age</dt>
+            <dd x-text="selectedJob.age || '\u2014'"></dd>
+          </dl>
+        </div>
+
+        <!-- View YAML from diagnostics drawer -->
+        <div class="mb-4 flex gap-2">
+          <button @click="openYaml('job', selectedJob.namespace, selectedJob.jobName || selectedJob.name)"
+                  class="btn-secondary text-xs">View YAML</button>
+          <button @click="openDeleteJob(selectedJob); closeDiagnostics()"
+                  x-show="selectedJob.status !== 'Running'"
+                  class="btn-danger text-xs">Delete Job</button>
+        </div>
+
+        <!-- Root Cause + Suggested Action — only for Pending and Failed -->
+        <template x-if="selectedJob.rootCause && !['RUNNING','COMPLETED','UNKNOWN','NOT_YET_EVALUATED'].includes(selectedJob.rootCause)">
+          <div class="mb-5">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Root Cause</h3>
+            <div class="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-4 text-sm space-y-2">
+              <p class="text-yellow-200 font-medium" x-text="rootCauseLabelFor(selectedJob)"></p>
+              <template x-if="selectedJob.workloadMessage">
+                <p class="text-gray-300 text-xs" x-text="selectedJob.workloadMessage"></p>
+              </template>
+              <template x-if="selectedJob.suggestedAction">
+                <p class="text-indigo-300 text-xs font-medium" x-text="'→ ' + selectedJob.suggestedAction"></p>
+              </template>
+              <!-- Action button for missing queue -->
+              <button x-show="selectedJob.rootCause === 'QUEUE_MISSING'"
+                      @click="closeDiagnostics(); createQueueModal.open = true; createQueueModal.result = null; createQueueModal.errors = {}; createQueueModal.name = (selectedJob.localQueueName || selectedJob.queue || ''); createQueueModal.namespace = selectedJob.namespace; createQueueModal.clusterQueue = ''"
+                      class="btn-primary mt-1">
+                → Create missing queue
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <!-- Quota info (from server-side diagnostics) -->
+        <template x-if="selectedJob.nominalCpu || selectedJob.nominalMemory">
+          <div class="mb-5">
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Cluster Queue Quota</h3>
+            <div class="bg-gray-800 rounded-lg border border-gray-700 p-3">
+              <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <dt class="text-gray-400">CPU Nominal</dt>
+                <dd class="text-gray-200" x-text="selectedJob.nominalCpu || '—'"></dd>
+                <dt class="text-gray-400">CPU Used</dt>
+                <dd class="text-gray-200" x-text="selectedJob.usedCpu || '—'"></dd>
+                <dt class="text-gray-400">Mem Nominal</dt>
+                <dd class="text-gray-200" x-text="selectedJob.nominalMemory || '—'"></dd>
+                <dt class="text-gray-400">Mem Used</dt>
+                <dd class="text-gray-200" x-text="selectedJob.usedMemory || '—'"></dd>
+              </dl>
+            </div>
+          </div>
+        </template>
+
+        <!-- Conditions list -->
+        <template x-if="selectedJob.conditions && selectedJob.conditions.length > 0">
+          <div>
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Workload Conditions</h3>
+            <div class="space-y-2">
+              <template x-for="c in selectedJob.conditions" :key="c.type">
+                <div class="bg-gray-800 rounded-lg p-3 text-xs border border-gray-700">
+                  <div class="flex justify-between items-center mb-1">
+                    <span class="font-semibold text-gray-200" x-text="c.type"></span>
+                    <span :class="c.conditionStatus === 'True' ? 'text-green-400' : 'text-gray-400'"
+                          x-text="c.conditionStatus"></span>
+                  </div>
+                  <template x-if="c.reason">
+                    <p class="text-gray-400 mb-0.5">Reason: <span class="text-yellow-300" x-text="c.reason"></span></p>
+                  </template>
+                  <template x-if="c.message">
+                    <p class="text-gray-300 break-words" x-text="c.message"></p>
+                  </template>
+                  <template x-if="c.lastTransitionTime">
+                    <p class="text-gray-500 mt-1" x-text="c.lastTransitionTime"></p>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- ═══ TOAST NOTIFICATION ═══ -->
+<!-- Fixed bottom-right, appears above all content, auto-dismisses -->
+<div x-show="toast.visible"
+     x-transition:enter="transition ease-out duration-200"
+     x-transition:enter-start="opacity-0 translate-y-2"
+     x-transition:enter-end="opacity-100 translate-y-0"
+     x-transition:leave="transition ease-in duration-150"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0"
+     class="fixed bottom-6 right-6 z-[9999] bg-green-800 border border-green-600 text-green-100 text-sm font-medium px-5 py-3 rounded-lg shadow-xl flex items-center gap-3">
+  <span class="text-green-300">✓</span>
+  <span x-text="toast.message"></span>
+  <button @click="toast.visible = false" class="text-green-300 hover:text-white ml-2 text-base leading-none">✕</button>
+</div>
+
+</body>
+</html>

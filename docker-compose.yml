@@ -1,0 +1,13 @@
+version: '3.8'
+services:
+  kueue-console:
+    build: .
+    ports:
+      - "5000:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - KUBECONFIG=/kube/config
+    volumes:
+      # Set the KUBECONFIG env variable locally to point to your kubeconfig file
+      # Example (PowerShell): $env:KUBECONFIG = "$env:USERPROFILE\.kube\config"
+      - ${KUBECONFIG}:/kube/config:ro

@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: ui-test-job-
+  namespace: default
+  labels:
+    kueue.x-k8s.io/queue-name: user-queue
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: job
+        image: busybox
+        command: ["sh", "-c", "echo hello from user-queue; sleep 60"]
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "128Mi"

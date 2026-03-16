@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: large-job-
+  namespace: demo
+  labels:
+    kueue.x-k8s.io/queue-name: large-queue
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: job
+        image: busybox
+        command: ["sh","-c","echo running large job; sleep 40"]
+        resources:
+          requests:
+            cpu: "2"
+            memory: "1Gi"

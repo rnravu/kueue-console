@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: small-job-
+  namespace: demo
+  labels:
+    kueue.x-k8s.io/queue-name: small-queue
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: job
+        image: busybox
+        command: ["sh","-c","echo running small job; sleep 20"]
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "256Mi"

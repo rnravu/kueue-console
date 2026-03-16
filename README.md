@@ -33,12 +33,14 @@ The `kueue-demo/` folder contains sample manifests and helper scripts for runnin
 
 ## Important notes (security & publishing)
 
-- This repository contains a simple in-memory user store for demo purposes in `Services/UserService.cs`.
-  - Demo credentials: `admin` / `password` and `viewer` / `viewer`.
-  - **Do not** use these credentials in production and remove or rotate any secrets before making the repository public.
-  - Replace the in-memory store with a proper identity provider (OAuth/OpenID Connect, LDAP, etc.) for real deployments.
+- This repository intentionally does **not** include authentication or authorization; no auth middleware or demo user store is registered. All API endpoints are unprotected.
+  - Before deploying or exposing this app, add a proper authentication and authorization solution (OpenID Connect / OAuth2, ASP.NET Core Identity, or a reverse-proxy auth layer).
 
 - Before publishing to a public GitHub repo, verify there are no committed secrets (API keys, passwords, kubeconfigs). If secrets were committed, rotate them immediately and remove them from the git history.
+
+## License
+
+This repository is released under the MIT License. See the `LICENSE` file for details.
 
 ## GitHub: prepare & push
 
