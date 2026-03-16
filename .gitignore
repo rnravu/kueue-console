@@ -1,0 +1,32 @@
+# Visual Studio / .NET
+.vs/
+bin/
+obj/
+appsettings.*.json
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+
+# VS Code
+.vscode/
+
+# Publish output
+publish/
+*.publish
+
+# macOS
+.DS_Store
+
+# Node (if present)
+node_modules/
+
+# Kubernetes / kubeconfig (do not commit cluster credentials)
+**/kubeconfig
+*.kubeconfig
+
+# env files
+.env
