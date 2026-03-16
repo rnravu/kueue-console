@@ -1382,16 +1382,18 @@ function app() {
         <div>
           <label class="form-label">Cluster Queue <span class="text-red-400">*</span></label>
           <div class="flex gap-2">
-            <input type="text" x-model="createQueueModal.clusterQueue" placeholder="e.g. cluster-queue" class="form-input flex-1"
-                   :class="createQueueModal.errors.clusterQueue ? 'border-red-500' : ''">
-            <select x-show="clusterQueues.length" x-model="createQueueModal.clusterQueue"
-                    class="bg-gray-700 border border-gray-600 rounded px-2 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500">
-              <option value="">Pick…</option>
+            <select x-model="createQueueModal.clusterQueue"
+                    :class="createQueueModal.errors.clusterQueue ? 'form-input border-red-500' : 'form-input'"
+                    class="form-input">
+              <option value="">Pick a cluster queue…</option>
               <template x-for="cq in clusterQueues" :key="cq.name">
                 <option :value="cq.name" x-text="cq.name"></option>
               </template>
             </select>
           </div>
+          <template x-if="clusterQueues.length === 0">
+            <p class="text-yellow-300 text-xs mt-1">No ClusterQueues found — create a ClusterQueue first.</p>
+          </template>
           <p x-show="createQueueModal.errors.clusterQueue" class="text-red-400 text-xs mt-1" x-text="createQueueModal.errors.clusterQueue"></p>
         </div>
       </div>
