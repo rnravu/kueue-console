@@ -916,18 +916,17 @@ function app() {
         const json = await res.json();
         let content = json.yaml ?? json.error ?? 'No content';
 
-        // If we're opening in read-only (view) mode, prefer a human-friendly YAML
-        // representation. The backend currently returns formatted JSON (which is
-        // a valid YAML subset). Convert JSON -> YAML client-side when possible.
-        if (!editable) {
-          try {
-            const parsed = JSON.parse(content);
-            if (typeof jsyaml !== 'undefined' && jsyaml && typeof jsyaml.dump === 'function') {
-              content = jsyaml.dump(parsed);
-            }
-          } catch (_e) {
-            // Not JSON — leave content as-is.
+        // Convert backend JSON -> YAML for a friendlier editor/view when possible.
+        // Editable mode will also show YAML so users can edit in YAML; on save
+        // we'll convert back to JSON for the API. If conversion fails we leave
+        // the original content as-is.
+        try {
+          const parsed = JSON.parse(content);
+          if (typeof jsyaml !== 'undefined' && jsyaml && typeof jsyaml.dump === 'function') {
+            content = jsyaml.dump(parsed);
           }
+        } catch (_e) {
+          // Not JSON — leave content as-is (it may already be YAML).
         }
 
         this.yamlModal.yaml = content;
@@ -952,15 +951,36 @@ function app() {
         const url = m._kind === 'localqueue'
           ? `/api/queues/${encodeURIComponent(m._namespace)}/${encodeURIComponent(m._name)}/yaml`
           : `/api/jobs/${encodeURIComponent(m._namespace)}/${encodeURIComponent(m._name)}/yaml`;
-        // Validate it's parseable JSON before sending
-        try { JSON.parse(m.yaml); } catch(e) {
-          m.saveError = 'Invalid JSON: ' + e.message;
+
+        // Accept either JSON or YAML input. Try JSON first, then fall back to js-yaml.
+        let obj = null;
+        try {
+          obj = JSON.parse(m.yaml);
+        } catch (jsonErr) {
+          // Not JSON — try YAML iff js-yaml is available
+          if (typeof jsyaml !== 'undefined' && jsyaml && typeof jsyaml.load === 'function') {
+            try {
+              obj = jsyaml.load(m.yaml);
+            } catch (yamlErr) {
+              m.saveError = 'Invalid YAML: ' + yamlErr.message;
+              m.saving = false; return;
+            }
+          } else {
+            m.saveError = 'Invalid JSON and js-yaml not available';
+            m.saving = false; return;
+          }
+        }
+
+        if (obj === undefined || obj === null) {
+          m.saveError = 'Invalid document: empty or unsupported';
           m.saving = false; return;
         }
+
+        const jsonString = JSON.stringify(obj);
         const res = await fetch(url, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ yaml: m.yaml }),
+          body: JSON.stringify({ yaml: jsonString }),
         });
         const result = await res.json();
         if (result.success) {
