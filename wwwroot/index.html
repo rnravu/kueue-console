@@ -6,6 +6,7 @@
   <title>Kueue Console</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
   <style type="text/tailwindcss">
     [x-cloak] { display: none !important; }
     .nav-link { @apply px-4 py-2 rounded-md text-sm font-medium transition-colors; }
@@ -897,10 +898,10 @@ function app() {
     },
 
     // ── YAML modal ────────────────────────────────────────────────────────────
-    async openYaml(kind, namespace, name) {
+    async openYaml(kind, namespace, name, editable = false) {
       this.yamlModal = {
         open: true, loading: true, saving: false,
-        readOnly: kind === 'clusterqueue',
+        readOnly: !editable,
         title: `${kind}: ${namespace ? namespace + '/' : ''}${name}`,
         yaml: '', error: '', saveError: '',
         _namespace: namespace, _name: name, _kind: kind,
@@ -913,7 +914,23 @@ function app() {
             : `/api/jobs/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/yaml`;
         const res = await fetch(url);
         const json = await res.json();
-        this.yamlModal.yaml = json.yaml ?? json.error ?? 'No content';
+        let content = json.yaml ?? json.error ?? 'No content';
+
+        // If we're opening in read-only (view) mode, prefer a human-friendly YAML
+        // representation. The backend currently returns formatted JSON (which is
+        // a valid YAML subset). Convert JSON -> YAML client-side when possible.
+        if (!editable) {
+          try {
+            const parsed = JSON.parse(content);
+            if (typeof jsyaml !== 'undefined' && jsyaml && typeof jsyaml.dump === 'function') {
+              content = jsyaml.dump(parsed);
+            }
+          } catch (_e) {
+            // Not JSON — leave content as-is.
+          }
+        }
+
+        this.yamlModal.yaml = content;
       } catch(e) {
         this.yamlModal.error = 'Failed to load: ' + e.message;
       } finally {
@@ -922,8 +939,9 @@ function app() {
     },
 
     openYamlEdit(kind, namespace, name) {
-      this.openYaml(kind, namespace, name);
-      // readOnly is already false for non-clusterqueue kinds
+      // Open an editable JSON view so the Save button is enabled and the
+      // editor contains the JSON the backend expects for updates.
+      this.openYaml(kind, namespace, name, true);
     },
 
     async saveYaml() {
