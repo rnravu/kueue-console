@@ -12,15 +12,15 @@ kubectl apply -f queues/localqueues.yaml
 Write-Host "Submitting jobs..."
 
 for ($i=1; $i -le 5; $i++) {
-    kubectl apply -f jobs/job-small.yaml
+    kubectl create -f jobs/job-small.yaml
 }
 
 for ($i=1; $i -le 3; $i++) {
-    kubectl apply -f jobs/job-medium.yaml
+    kubectl create -f jobs/job-medium.yaml
 }
 
 for ($i=1; $i -le 2; $i++) {
-    kubectl apply -f jobs/job-large.yaml
+    kubectl create -f jobs/job-large.yaml
 }
 
 Write-Host "Demo jobs submitted!"
