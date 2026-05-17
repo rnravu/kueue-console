@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore KueueConsole.Web.csproj
+
+      - name: Build
+        run: dotnet build KueueConsole.Web.csproj -c Release --no-restore
+
+      - name: Test (if test project exists)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "KueueConsole.Web.Tests/KueueConsole.Web.Tests.csproj" ]; then
+            dotnet test KueueConsole.Web.Tests/KueueConsole.Web.Tests.csproj -c Release --no-build --verbosity normal
+          else
+            echo "No in-repo test project found. Skipping test step."
+          fi

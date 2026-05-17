@@ -17,6 +17,10 @@ Place screenshots in `docs/screenshots/`.
 ![Jobs](docs/screenshots/jobs.png)
 ![Troubleshooting](docs/screenshots/troubleshoot.png)
 
+## Architecture Diagram
+
+See the full system diagram and data-flow notes in `docs/ARCHITECTURE.md`.
+
 ## Prerequisites
 
 - Docker Desktop
