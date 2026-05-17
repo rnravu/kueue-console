@@ -1,6 +1,14 @@
 # Kueue Console Web
 
-Public report and reference implementation for a .NET 8 web UI that observes and manages Kueue queues, workloads, and jobs in Kubernetes.
+> A .NET 8 ASP.NET Core web dashboard for [Kueue](https://kueue.sigs.k8s.io/) — observe and manage workload queues, cluster queues, local queues, and batch jobs running on Kubernetes.
+
+## About
+
+Kueue Console Web is a reference implementation and public report demonstrating platform engineering practices with Kubernetes and .NET. It provides a real-time web UI that connects to a Kubernetes cluster, watches Kueue custom resources, and surfaces queue state, workload admission status, and job lifecycle in one place.
+
+Built to explore the intersection of .NET backend development and Kubernetes platform engineering — covering in-cluster deployment, background watch services, Kubernetes client SDK usage, and production container patterns.
+
+**Tech stack:** ASP.NET Core 8 · Kubernetes Client SDK · Kueue CRDs · Docker · kind · GitHub Actions CI
 
 ## What This Repository Contains
 
