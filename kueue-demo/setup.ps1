@@ -1,3 +1,5 @@
+Set-Location -Path $PSScriptRoot
+
 Write-Host "Creating demo namespace..."
 kubectl create namespace demo --dry-run=client -o yaml | kubectl apply -f -
 
