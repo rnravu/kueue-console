@@ -162,13 +162,6 @@ Open `http://localhost:5000`.
 docker compose up --build
 ```
 
-## Public Push Checklist
-
-1. Confirm screenshot links render on GitHub.
-2. Ensure no secrets are committed (tokens, kubeconfigs, credentials).
-3. Redact sensitive values in screenshots.
-4. Confirm README commands run on a clean machine.
-
 ## Security Note
 
 This demo app does not include authentication/authorization middleware by default. Add auth before exposing it publicly.
