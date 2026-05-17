@@ -1,83 +1,174 @@
-# KueueConsole.Web
+# Kueue Console Web
 
-> Web UI and demo app for Kueue (KueueConsole) — shows workloads, queues, and basic provisioning helpers.
+Public report and reference implementation for a .NET 8 web UI that observes and manages Kueue queues, workloads, and jobs in Kubernetes.
 
-## Overview
+## What This Repository Contains
 
-This is a small ASP.NET Core web application used as a demo / UI for Kueue workloads and queues.
+- ASP.NET Core web app for Kueue dashboard and operations.
+- Kubernetes/Kueue demo manifests and setup scripts under `kueue-demo/`.
+- Project documentation in `docs/`.
+
+## Screenshot Gallery
+
+Place screenshots in `docs/screenshots/`.
+
+![Dashboard](docs/screenshots/dashboard.png)
+![Queues](docs/screenshots/queues.png)
+![Jobs](docs/screenshots/jobs.png)
+![Troubleshooting](docs/screenshots/troubleshoot.png)
 
 ## Prerequisites
 
-- .NET 8 SDK (https://dotnet.microsoft.com)
-- (Optional) Kubernetes cluster and a valid `kubeconfig` if you want the watcher services to connect to a cluster
+- Docker Desktop
+- `kubectl`
+- `kind`
+- .NET SDK 8.0+
 
-## Build & Run
+## Docker Desktop Setup (Windows, macOS, Linux)
 
-Build the solution:
+### Windows
 
-```bash
-dotnet build KueueConsole.Web.sln -c Release
+```powershell
+winget install -e --id Docker.DockerDesktop
+docker version
+docker info
 ```
 
-Run the app:
+### macOS
 
 ```bash
+brew install --cask docker
+docker version
+docker info
+```
+
+### Linux (Docker Desktop)
+
+Install Docker Desktop from official packages for your distribution, then verify:
+
+```bash
+docker version
+docker info
+```
+
+## Install `kubectl` and `kind`
+
+### Windows
+
+```powershell
+winget install -e --id Kubernetes.kubectl
+winget install -e --id Kubernetes.kind
+kubectl version --client
+kind version
+```
+
+### macOS
+
+```bash
+brew install kubectl kind
+kubectl version --client
+kind version
+```
+
+### Linux
+
+Install via your distro package manager or official binaries, then verify:
+
+```bash
+kubectl version --client
+kind version
+```
+
+## Full Kueue Cluster Setup Guide
+
+### 1. Create a local cluster
+
+```bash
+kind create cluster --name kueue-dev
+kubectl get nodes
+```
+
+### 2. Install Kueue
+
+```bash
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/v0.16.2/manifests.yaml
+kubectl wait deploy/kueue-controller-manager -n kueue-system --for=condition=available --timeout=5m
+```
+
+### 3. Verify installation
+
+```bash
+kubectl get pods -n kueue-system
+kubectl get crd | grep -i kueue
+```
+
+PowerShell alternative:
+
+```powershell
+kubectl get crd | Select-String -Pattern kueue
+```
+
+### 4. Apply demo resources from this repository
+
+```bash
+kubectl apply -f kueue-demo/flavor.yaml
+kubectl apply -f kueue-demo/clusterqueue.yaml
+kubectl apply -f kueue-demo/localqueue.yaml
+kubectl apply -f kueue-demo/job.yaml
+```
+
+### 5. Validate queue/job/workload lifecycle
+
+```bash
+kubectl get resourceflavors
+kubectl get clusterqueues
+kubectl get localqueues -A
+kubectl get workloads -A
+kubectl get jobs -A
+kubectl get events -A --sort-by='.metadata.creationTimestamp'
+```
+
+### 6. Optional scripted demo
+
+PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\kueue-demo\setup.ps1
+```
+
+Cleanup:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\kueue-demo\cleanup.ps1
+```
+
+### 7. Run the web app
+
+```bash
+dotnet restore
+dotnet build KueueConsole.Web.sln -c Debug
 dotnet run --project KueueConsole.Web.csproj
 ```
 
-By default the app will be available on `http://localhost:5000` (Kestrel default). Open your browser and navigate to the root to view the UI.
+Open `http://localhost:5000`.
 
-## Demo data
+## Run with Docker (Local)
 
-The `kueue-demo/` folder contains sample manifests and helper scripts for running demo jobs and queues. See `kueue-demo/README` and scripts for more details.
+```bash
+docker compose up --build
+```
 
-## Important notes (security & publishing)
+## Public Push Checklist
 
-- This repository intentionally does **not** include authentication or authorization; no auth middleware or demo user store is registered. All API endpoints are unprotected.
-  - Before deploying or exposing this app, add a proper authentication and authorization solution (OpenID Connect / OAuth2, ASP.NET Core Identity, or a reverse-proxy auth layer).
+1. Confirm screenshot links render on GitHub.
+2. Ensure no secrets are committed (tokens, kubeconfigs, credentials).
+3. Redact sensitive values in screenshots.
+4. Confirm README commands run on a clean machine.
 
-- Before publishing to a public GitHub repo, verify there are no committed secrets (API keys, passwords, kubeconfigs). If secrets were committed, rotate them immediately and remove them from the git history.
+## Security Note
+
+This demo app does not include authentication/authorization middleware by default. Add auth before exposing it publicly.
 
 ## License
 
-This repository is released under the MIT License. See the `LICENSE` file for details.
-
-## GitHub: prepare & push
-
-If you already have a git repo locally, ensure build artifacts are ignored and then commit:
-
-```bash
-# add common ignores
-echo ".gitignore" > .gitignore
-git add .gitignore README.md
-git commit -m "chore(docs): add README and .gitignore"
-```
-
-To create a new GitHub repo and push (using GitHub CLI `gh`):
-
-```bash
-gh repo create <OWNER>/<REPO> --public --source=. --remote=origin --push
-```
-
-Or manually:
-
-```bash
-git remote add origin https://github.com/<USERNAME>/<REPO>.git
-git branch -M main
-git push -u origin main
-```
-
-If you previously committed build artifacts, remove them from the index before pushing:
-
-```bash
-git rm -r --cached bin obj
-git commit -m "chore: remove build artifacts from repo"
-```
-
-## Contributing
-
-Contributions welcome. Open an issue or submit a pull request.
-
-## License
-
-No license file is included. Add a `LICENSE` (for example, the MIT license) before publishing if you want to grant public reuse rights.
+MIT. See `LICENSE`.
