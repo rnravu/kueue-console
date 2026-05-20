@@ -21,10 +21,10 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore
-        run: dotnet restore KueueConsole.Web.csproj
+        run: dotnet restore KueueConsole.Web.sln
 
       - name: Build
-        run: dotnet build KueueConsole.Web.csproj -c Release --no-restore
+        run: dotnet build KueueConsole.Web.sln -c Release --no-restore
 
       - name: Test (if test project exists)
         shell: bash

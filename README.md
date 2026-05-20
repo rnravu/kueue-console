@@ -1,69 +1,101 @@
-# Kueue Console Web
+# Kueue Console
 
-> A .NET 8 ASP.NET Core web dashboard for [Kueue](https://kueue.sigs.k8s.io/) — observe and manage workload queues, cluster queues, local queues, and batch jobs running on Kubernetes.
-
-## About
-
-Kueue Console Web is a reference implementation and public report demonstrating platform engineering practices with Kubernetes and .NET. It provides a real-time web UI that connects to a Kubernetes cluster, watches Kueue custom resources, and surfaces queue state, workload admission status, and job lifecycle in one place.
-
-Built to explore the intersection of .NET backend development and Kubernetes platform engineering — covering in-cluster deployment, background watch services, Kubernetes client SDK usage, and production container patterns.
-
-**Tech stack:** ASP.NET Core 8 · Kubernetes Client SDK · Kueue CRDs · Docker · kind · GitHub Actions CI
+Public report and reference implementation for a .NET 8 web UI that observes and manages Kueue queues, workloads, and jobs in Kubernetes.
 
 ## What This Repository Contains
 
-- ASP.NET Core web app for Kueue dashboard and operations.
-- Kubernetes/Kueue demo manifests and setup scripts under `kueue-demo/`.
-- Project documentation in `docs/`.
+- KueueConsole.Web: ASP.NET Core web app (controllers, services, static UI).
+- KueueConsole.Web.Tests: tests for API and unit-level behavior.
+- KueueConsole.Web/kueue-demo: Kueue demo manifests and helper scripts.
+- KueueConsole.Web/docs: supporting project documentation.
 
 ## Screenshot Gallery
 
-Place screenshots in `docs/screenshots/`.
+Store screenshots under KueueConsole.Web/docs/screenshots and use the filenames below.
 
-![Dashboard](docs/screenshots/dashboard.png)
-![Queues](docs/screenshots/queues.png)
-![Jobs](docs/screenshots/jobs.png)
-![Troubleshooting](docs/screenshots/troubleshoot.png)
+### Product UI
 
-## Architecture Diagram
+![Home dashboard](KueueConsole.Web/docs/screenshots/01-home-dashboard.png)
+![Cluster queues](KueueConsole.Web/docs/screenshots/02-cluster-queues.png)
+![Local queues](KueueConsole.Web/docs/screenshots/03-local-queues.png)
+![Workloads](KueueConsole.Web/docs/screenshots/04-workloads.png)
+![Job details](KueueConsole.Web/docs/screenshots/05-job-details.png)
+![Events stream](KueueConsole.Web/docs/screenshots/06-events-stream.png)
 
-See the full system diagram and data-flow notes in `docs/ARCHITECTURE.md`.
+### Setup and Validation Evidence
+
+![Kueue controller running](KueueConsole.Web/docs/screenshots/07-kueue-controller-running.png)
+![Kueue CRDs](KueueConsole.Web/docs/screenshots/08-kueue-crds.png)
+![Workload admitted](KueueConsole.Web/docs/screenshots/09-workload-admitted.png)
+
+If an image does not render, add the matching file into KueueConsole.Web/docs/screenshots.
 
 ## Prerequisites
 
 - Docker Desktop
-- `kubectl`
-- `kind`
+- kubectl
+- kind
 - .NET SDK 8.0+
+- Internet access to pull Kueue manifests and container images
 
 ## Docker Desktop Setup (Windows, macOS, Linux)
 
 ### Windows
 
+1. Install Docker Desktop:
+
 ```powershell
 winget install -e --id Docker.DockerDesktop
+```
+
+2. Start Docker Desktop from Start menu.
+3. In Docker Desktop settings, enable Kubernetes only if you plan to use Docker Desktop Kubernetes. This guide uses kind.
+4. Verify install:
+
+```powershell
 docker version
 docker info
 ```
 
 ### macOS
 
+1. Install Docker Desktop:
+
 ```bash
 brew install --cask docker
-docker version
-docker info
 ```
 
-### Linux (Docker Desktop)
-
-Install Docker Desktop from official packages for your distribution, then verify:
+2. Open Docker Desktop from Applications and allow requested permissions.
+3. Verify install:
 
 ```bash
 docker version
 docker info
 ```
 
-## Install `kubectl` and `kind`
+### Linux (Docker Desktop for Linux)
+
+Example for Ubuntu/Debian package flow:
+
+1. Download the Docker Desktop .deb package from official Docker docs.
+2. Install package:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ./docker-desktop-<version>-<arch>.deb
+```
+
+3. Start Docker Desktop and verify:
+
+```bash
+systemctl --user start docker-desktop
+docker version
+docker info
+```
+
+For Fedora, Arch, and other distributions, use the package and instructions from the official Docker Desktop Linux page.
+
+## Install kubectl and kind
 
 ### Windows
 
@@ -84,7 +116,7 @@ kind version
 
 ### Linux
 
-Install via your distro package manager or official binaries, then verify:
+Follow your distro package manager or official binaries for kubectl and kind, then verify:
 
 ```bash
 kubectl version --client
@@ -93,12 +125,16 @@ kind version
 
 ## Full Kueue Cluster Setup Guide
 
+This section provides a full local setup using kind and Kueue.
+
 ### 1. Create a local cluster
 
 ```bash
 kind create cluster --name kueue-dev
 kubectl get nodes
 ```
+
+Expected: control-plane node reaches Ready.
 
 ### 2. Install Kueue
 
@@ -107,7 +143,7 @@ kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases
 kubectl wait deploy/kueue-controller-manager -n kueue-system --for=condition=available --timeout=5m
 ```
 
-### 3. Verify installation
+### 3. Verify Kueue installation
 
 ```bash
 kubectl get pods -n kueue-system
@@ -120,16 +156,18 @@ PowerShell alternative:
 kubectl get crd | Select-String -Pattern kueue
 ```
 
-### 4. Apply demo resources from this repository
+### 4. Apply demo queue resources from this repository
+
+Run from repository root:
 
 ```bash
-kubectl apply -f kueue-demo/flavor.yaml
-kubectl apply -f kueue-demo/clusterqueue.yaml
-kubectl apply -f kueue-demo/localqueue.yaml
-kubectl apply -f kueue-demo/job.yaml
+kubectl apply -f KueueConsole.Web/kueue-demo/flavor.yaml
+kubectl apply -f KueueConsole.Web/kueue-demo/clusterqueue.yaml
+kubectl apply -f KueueConsole.Web/kueue-demo/localqueue.yaml
+kubectl apply -f KueueConsole.Web/kueue-demo/job.yaml
 ```
 
-### 5. Validate queue/job/workload lifecycle
+### 5. Validate admission and job lifecycle
 
 ```bash
 kubectl get resourceflavors
@@ -140,21 +178,25 @@ kubectl get jobs -A
 kubectl get events -A --sort-by='.metadata.creationTimestamp'
 ```
 
-### 6. Optional scripted demo
+### 6. Optional: run expanded demo scripts
 
-PowerShell:
+From KueueConsole.Web/kueue-demo:
+
+Windows PowerShell:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\kueue-demo\setup.ps1
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
 Cleanup:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\kueue-demo\cleanup.ps1
+powershell -ExecutionPolicy Bypass -File .\cleanup.ps1
 ```
 
-### 7. Run the web app
+### 7. Start Kueue Console Web app
+
+From KueueConsole.Web:
 
 ```bash
 dotnet restore
@@ -162,18 +204,39 @@ dotnet build KueueConsole.Web.sln -c Debug
 dotnet run --project KueueConsole.Web.csproj
 ```
 
-Open `http://localhost:5000`.
+Open browser at http://localhost:5000 or the URL printed by Kestrel.
 
-## Run with Docker (Local)
+## Optional: Run the Web App with Docker
+
+From KueueConsole.Web:
 
 ```bash
 docker compose up --build
 ```
 
-## Security Note
+The compose setup mounts kubeconfig for local development access.
 
-This demo app does not include authentication/authorization middleware by default. Add auth before exposing it publicly.
+## Test Commands
 
-## License
+From repository root:
 
-MIT. See `LICENSE`.
+```bash
+dotnet test KueueConsole.Web.Tests/KueueConsole.Web.Tests.csproj
+```
+
+## Public Report Checklist
+
+Before publishing this repository/report:
+
+1. Confirm all screenshot links render on GitHub.
+2. Remove or redact sensitive values from screenshots.
+3. Confirm no secrets are committed (tokens, kubeconfig, credentials).
+4. Add architecture and workflow screenshots that show admission flow.
+5. Include test execution evidence and environment details.
+
+## Additional Documentation
+
+- KueueConsole.Web/README.md
+- KueueConsole.Web/docs/docker.md
+- KueueConsole.Web/kueue-demo/docs/kueue-local-setup-guide.md
+- KueueConsole.Web/kueue-demo/docs/kueue_setup_reference.md
