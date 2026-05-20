@@ -3,9 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.5.2.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KueueConsole.Web", "KueueConsole.Web\KueueConsole.Web.csproj", "{22A22DA0-1919-4D24-9CFF-52A8247A2967}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KueueConsole.Web", "web\KueueConsole.Web.csproj", "{22A22DA0-1919-4D24-9CFF-52A8247A2967}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KueueConsole.Web.Tests", "KueueConsole.Web.Tests\KueueConsole.Web.Tests.csproj", "{7B3EF05C-1F2B-449A-A221-E50B9E1D4B05}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KueueConsole.Web.Tests", "web-tests\KueueConsole.Web.Tests.csproj", "{7B3EF05C-1F2B-449A-A221-E50B9E1D4B05}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
