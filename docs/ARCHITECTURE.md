@@ -8,7 +8,7 @@ This document describes how Kueue Console Web interacts with Kubernetes and Kueu
 flowchart LR
 	U[User Browser]
 
-	subgraph APP[Kueue Console Web .NET 8]
+	subgraph APP ["Kueue Console Web .NET 8"]
 		API[REST Controllers]
 		AGG[Dashboard Aggregator Service]
 		SVC["Domain Services<br>ClusterQueue / LocalQueue / Workload / Jobs"]
@@ -19,9 +19,9 @@ flowchart LR
 		EVT[Cluster Event Service]
 	end
 
-	subgraph K8S[Kubernetes Cluster]
+	subgraph K8S ["Kubernetes Cluster"]
 		KAPI[Kubernetes API Server]
-		subgraph KUEUE[Kueue CRDs]
+		subgraph KUEUE ["Kueue CRDs"]
 			WL[Workloads]
 			LQ[LocalQueues]
 			CQ[ClusterQueues]
