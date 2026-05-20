@@ -10,4 +10,4 @@ plugins:
 google_site_verification: YOUR_VERIFICATION_CODE_HERE
 
 # Tell Jekyll that this site lives in a subdirectory
-baseurl: "/KueueConsole.Web"
+baseurl: "/kueue-console"
