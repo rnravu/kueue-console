@@ -10,7 +10,7 @@ Kueue Console provides a fast, lightweight web interface for interacting with an
 
 ## Documentation
 
-- [Architecture & Design](architecture.html)
+- [Architecture & Design](ARCHITECTURE.html)
 - [How to Run (Docker)](docker.html)
 
 ---
