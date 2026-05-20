@@ -1,0 +1,13 @@
+theme: jekyll-theme-cayman
+title: Kueue Console
+description: Web interface for interacting with and managing Kubernetes Kueue workloads.
+
+# This plugin automatically adds SEO meta tags (including Google Search Console verification)
+plugins:
+  - jekyll-seo-tag
+
+# Replace this with the verification ID Google Search Console gives you
+google_site_verification: YOUR_VERIFICATION_CODE_HERE
+
+# Tell Jekyll that this site lives in a subdirectory
+baseurl: "/KueueConsole.Web"
