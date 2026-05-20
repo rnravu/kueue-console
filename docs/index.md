@@ -12,6 +12,3 @@ Kueue Console provides a fast, lightweight web interface for interacting with an
 
 - [Architecture & Design](ARCHITECTURE.html)
 - [How to Run (Docker)](docker.html)
-
----
-*Visit our [GitHub Repository](https://github.com/rnravu/kueue-console) to contribute.*

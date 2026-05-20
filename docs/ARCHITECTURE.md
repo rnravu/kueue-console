@@ -4,7 +4,7 @@ This document describes how Kueue Console Web interacts with Kubernetes and Kueu
 
 ## 1. High-Level Architecture
 
-```mermaid
+<div class="mermaid">
 flowchart LR
 	U[User Browser]
 
@@ -55,7 +55,10 @@ flowchart LR
 
 	CTRL -->|Admission decisions| WL
 	WL -->|Admitted workloads| JOBS
-```
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true});</script>
 
 ## 2. Runtime Flow
 
