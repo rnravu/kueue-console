@@ -8,10 +8,11 @@ plugins:
   - jekyll-sitemap
 
 # Replace this with the verification ID Google Search Console gives you
-google_site_verification: oSJekg3v-QyorsDwZBv8Er7QQSYuWY4-r0qmj3jI2nw
+google_site_verification: r-yTwtGYO1P-ss-jGtinRS0tI4Txg5ulKorwtW2Wx-U
+
 
 # Tell Jekyll that this site lives in a subdirectory
 baseurl: "/kueue-console"
 
 # Your site's domain, required for sitemap absolute URLs
-url: "https://<your-username>.github.io"
+url: "https://rnravu.github.io"
