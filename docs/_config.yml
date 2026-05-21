@@ -8,7 +8,7 @@ plugins:
   - jekyll-sitemap
 
 # Replace this with the verification ID Google Search Console gives you
-google_site_verification: YOUR_VERIFICATION_CODE_HERE
+google_site_verification: r-yTwtGYO1P-ss-jGtinRS0tI4Txg5ulKorwtW2Wx-U
 
 # Tell Jekyll that this site lives in a subdirectory
 baseurl: "/kueue-console"
